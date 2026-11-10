@@ -1,0 +1,267 @@
+import type { AgentProfile, Member } from "../types";
+
+// Tim Kuli Digital: 9 manusia + 9 agent AI. Nama selaras dengan Office 3D.
+export const members: Member[] = [
+  { id: "bhagas", name: "Bhagas", fullName: "Bhagas Kuro", kind: "human", role: "Direktur", team: "Manajemen", division: "manajemen", initials: "BK", color: "#D6D7E0", email: "bhagaskuro@gmail.com", access: "Owner", status: "online", floor: "l1", joined: "2026-01-04" },
+  { id: "laras", name: "Laras", fullName: "Laras Pramesti", kind: "human", role: "Product Manager", team: "Produk", division: "engineering", initials: "LP", color: "#BFD7EA", email: "laras@kulidigital.id", access: "Admin", status: "fokus", floor: "l1", joined: "2026-02-10" },
+  { id: "dimas", name: "Dimas", fullName: "Dimas Aryo", kind: "human", role: "UI Designer", team: "Desain", division: "kreatif", initials: "DA", color: "#F4B8A6", email: "dimas@kulidigital.id", access: "Anggota", status: "online", floor: "l1", joined: "2026-03-02" },
+  { id: "ayu", name: "Ayu", fullName: "Ayu Kirana", kind: "human", role: "Frontend Engineer", team: "Engineering", division: "engineering", initials: "AK", color: "#F6C1C7", email: "ayu@kulidigital.id", access: "Anggota", status: "online", floor: "l1", joined: "2026-03-16" },
+  { id: "andi", name: "Andi", fullName: "Andi Saputra", kind: "human", role: "Backend Engineer", team: "Engineering", division: "engineering", initials: "AS", color: "#B8DCC6", email: "andi@kulidigital.id", access: "Anggota", status: "online", floor: "l1", joined: "2026-04-01" },
+  { id: "wulan", name: "Wulan", fullName: "Wulan Sari", kind: "human", role: "Mobile Engineer", team: "Engineering", division: "engineering", initials: "WS", color: "#C9C2EE", email: "wulan@kulidigital.id", access: "Anggota", status: "offline", floor: "l1", joined: "2026-05-11" },
+  { id: "rizky", name: "Rizky", fullName: "Rizky Maulana", kind: "human", role: "Fullstack Engineer", team: "Engineering", division: "engineering", initials: "RM", color: "#F7DCA0", email: "rizky@kulidigital.id", access: "Anggota", status: "online", floor: "l1", joined: "2026-06-08" },
+  { id: "hendra", name: "Hendra", fullName: "Hendra Wijaya", kind: "human", role: "QA Lead", team: "QA", division: "engineering", initials: "HW", color: "#CFE3B5", email: "hendra@kulidigital.id", access: "Anggota", status: "online", floor: "l1", joined: "2026-04-20" },
+  { id: "sari", name: "Sari", fullName: "Sari Anggraini", kind: "human", role: "Account Manager", team: "Klien", division: "bisnis", initials: "SA", color: "#F2C6E0", email: "sari@kulidigital.id", access: "Anggota", status: "online", floor: "l1", joined: "2026-02-24" },
+  { id: "intan", name: "Intan", fullName: "Intan Permata", kind: "human", role: "Creative Lead", team: "Kreatif", division: "kreatif", initials: "IP", color: "#F9C6D3", email: "intan@kulidigital.id", access: "Admin", status: "online", floor: "l2", joined: "2026-03-09" },
+  { id: "galih", name: "Galih", fullName: "Galih Pratama", kind: "human", role: "Motion & Video Editor", team: "Kreatif", division: "kreatif", initials: "GP", color: "#C7D2FE", email: "galih@kulidigital.id", access: "Anggota", status: "fokus", floor: "l2", joined: "2026-06-22" },
+  { id: "mega", name: "Mega", fullName: "Mega Lestari", kind: "human", role: "Marketing Lead", team: "Marketing", division: "marketing", initials: "ML", color: "#FDE68A", email: "mega@kulidigital.id", access: "Admin", status: "online", floor: "l2", joined: "2026-04-13" },
+  { id: "reza", name: "Reza", fullName: "Reza Aditya", kind: "human", role: "Content & Social Media", team: "Marketing", division: "marketing", initials: "RA", color: "#BAE6FD", email: "reza@kulidigital.id", access: "Anggota", status: "online", floor: "l2", joined: "2026-07-06" },
+  { id: "pakbudi", name: "Pak Budi", fullName: "Budi Hartono", kind: "human", role: "Klien · PT Sinar Abadi", team: "Tamu", division: "bisnis", initials: "BH", color: "#E3E4EA", email: "budi@sinarabadi.co.id", access: "Tamu", status: "offline", joined: "2026-09-15" },
+
+  { id: "raka", name: "Raka", fullName: "Raka", kind: "agent", role: "Business Analyst", team: "Analisis & Produk", division: "engineering", initials: "R", access: "Agent", status: "bekerja", floor: "l1", joined: "2026-05-02" },
+  { id: "sinta", name: "Sinta", fullName: "Sinta", kind: "agent", role: "System Analyst", team: "Analisis & Produk", division: "engineering", initials: "S", access: "Agent", status: "idle", floor: "l1", joined: "2026-05-02" },
+  { id: "fajar", name: "Fajar", fullName: "Fajar", kind: "agent", role: "QA Document Reviewer", team: "Analisis & Produk", division: "engineering", initials: "F", access: "Agent", status: "bekerja", floor: "l1", joined: "2026-05-20" },
+  { id: "bima", name: "Bima", fullName: "Bima", kind: "agent", role: "Solution Architect", team: "Engineering", division: "engineering", initials: "B", access: "Agent", status: "bekerja", floor: "l1", joined: "2026-05-02" },
+  { id: "dewi", name: "Dewi", fullName: "Dewi", kind: "agent", role: "DevOps Engineer", team: "Engineering", division: "engineering", initials: "D", access: "Agent", status: "menunggu", floor: "l1", joined: "2026-06-15" },
+  { id: "nadia", name: "Nadia", fullName: "Nadia", kind: "agent", role: "Project Manager", team: "Manajemen", division: "manajemen", initials: "N", access: "Agent", status: "bekerja", floor: "l1", joined: "2026-05-02" },
+  { id: "sekar", name: "Sekar", fullName: "Sekar", kind: "agent", role: "Customer Success", team: "Klien", division: "bisnis", initials: "Sk", access: "Agent", status: "bekerja", floor: "l2", joined: "2026-07-01" },
+  { id: "bayu", name: "Bayu", fullName: "Bayu", kind: "agent", role: "QA Tester", team: "QA", division: "engineering", initials: "By", access: "Agent", status: "bekerja", floor: "l2", joined: "2026-07-14" },
+  { id: "dian", name: "Dian", fullName: "Dian", kind: "agent", role: "Copywriter", team: "Marketing", division: "marketing", initials: "Di", access: "Agent", status: "bekerja", floor: "l2", joined: "2026-09-01" },
+  { id: "kirana", name: "Kirana", fullName: "Kirana", kind: "agent", role: "Social Media Manager", team: "Marketing", division: "marketing", initials: "Ki", access: "Agent", status: "bekerja", floor: "l2", joined: "2026-10-15" },
+  { id: "raga", name: "Raga", fullName: "Raga", kind: "agent", role: "Asisten Video Editor", team: "Kreatif", division: "kreatif", initials: "Ra", access: "Agent", status: "idle", floor: "l2", joined: "2026-10-15" },
+  { id: "tari", name: "Tari", fullName: "Tari", kind: "agent", role: "Technical Writer", team: "Dokumentasi", division: "engineering", initials: "T", access: "Agent", status: "idle", floor: "l2", joined: "2026-08-03" },
+];
+
+// Pola biaya harian (ribu rupiah) 30 hari terakhir, deterministik.
+function series(base: number, amp: number, seed: number): number[] {
+  return Array.from({ length: 30 }, (_, i) => {
+    const weekend = (i + 3) % 7 >= 5;
+    const v = base + Math.sin(i * 0.7 + seed) * amp + Math.cos(i * 0.31 + seed * 2) * amp * 0.6 + i * 0.12;
+    return Math.max(0, Math.round((weekend ? v * 0.25 : v) * 10) / 10);
+  });
+}
+
+export const agentProfiles: AgentProfile[] = [
+  {
+    id: "raka",
+    model: "Claude Opus 5.5",
+    description: "Menerjemahkan brief dan obrolan klien menjadi BRD, user story, dan kriteria penerimaan. Selalu meminta persetujuan sebelum menghubungi klien.",
+    skills: ["Analisis kebutuhan", "BRD", "User story", "Wawancara klien", "Prioritas MoSCoW"],
+    budget: 200000, spent: 96400, tasksDone: 47, avgMinutes: 38, approvalRate: 94,
+    currentTask: "BRD v2 Pinarak — paket Premium",
+    supervisorId: "laras",
+    tools: [
+      { name: "Garap · Tiket", scope: "Semua proyek", mode: "baca-tulis" },
+      { name: "Garap · Dokumen", scope: "Semua proyek", mode: "baca-tulis" },
+      { name: "Gmail", scope: "sari@kulidigital.id", mode: "persetujuan" },
+      { name: "Google Drive", scope: "Folder /Klien", mode: "baca" },
+      { name: "Notion", scope: "Wiki produk", mode: "baca" },
+    ],
+    learnings: [
+      { title: "Klien Pinarak lebih suka istilah “paket”, bukan “tier”", body: "Di semua dokumen yang dikirim ke klien, gunakan “paket Basic / Premium / Eksklusif”.", source: "Koreksi dari Laras di PNR-138", date: "2026-10-29", pinned: true },
+      { title: "Pertanyaan klarifikasi maksimal 3 per email", body: "Bhagas menolak draf email berisi 7 pertanyaan. Kelompokkan, kirim paling penting dulu.", source: "Persetujuan ditolak · 14 Okt", date: "2026-10-14", pinned: true },
+      { title: "Estimasi harus mencantumkan asumsi", body: "Setiap estimasi di BRD diberi daftar asumsi agar Nadia bisa menghitung ulang.", source: "Retro Sprint 3", date: "2026-10-25" },
+      { title: "HRIS: istilah “cuti bersama” mengikuti SKB 3 Menteri", body: "Pak Budi menegaskan kalender cuti mengikuti keputusan pemerintah tiap tahun.", source: "Rapat klien HRIS · 9 Okt", date: "2026-10-09" },
+    ],
+    usage: series(3.6, 1.6, 1),
+  },
+  {
+    id: "sinta",
+    model: "Claude Sonnet 5.5",
+    description: "Mengubah BRD yang sudah disetujui menjadi SRS: alur sistem, aturan validasi, dan kontrak data per modul.",
+    skills: ["SRS", "Use case", "Diagram alur", "Validasi data"],
+    budget: 120000, spent: 41800, tasksDone: 31, avgMinutes: 52, approvalRate: 97,
+    currentTask: "Menunggu BRD v2 final",
+    supervisorId: "laras",
+    tools: [
+      { name: "Garap · Tiket", scope: "Semua proyek", mode: "baca-tulis" },
+      { name: "Garap · Dokumen", scope: "Semua proyek", mode: "baca-tulis" },
+      { name: "Figma", scope: "File Pinarak, HRIS", mode: "baca" },
+    ],
+    learnings: [
+      { title: "Format nomor telepon: E.164", body: "Semua field telepon divalidasi dengan format +62…; tampilan tetap 08…", source: "Komentar Andi di PNR-127", date: "2026-10-18", pinned: true },
+      { title: "Status RSVP hanya 3 nilai", body: "Hadir, Tidak hadir, Ragu. Jangan tambah “Mungkin”.", source: "Review Fajar · SRS v0.9", date: "2026-10-27" },
+    ],
+    usage: series(1.6, 0.9, 2),
+  },
+  {
+    id: "fajar",
+    model: "Claude Sonnet 5.5",
+    description: "Membaca ulang setiap dokumen sebelum sampai ke manusia: konsistensi istilah, rujukan silang, dan celah requirement.",
+    skills: ["Review dokumen", "Cek konsistensi", "Traceability", "Glosarium"],
+    budget: 100000, spent: 52300, tasksDone: 64, avgMinutes: 21, approvalRate: 99,
+    currentTask: "Review SRS v1 Pinarak (62%)",
+    supervisorId: "hendra",
+    tools: [
+      { name: "Garap · Dokumen", scope: "Semua proyek", mode: "baca-tulis" },
+      { name: "Garap · Tiket", scope: "Semua proyek", mode: "baca" },
+    ],
+    learnings: [
+      { title: "Cek ERD setiap kali SRS menyebut entitas baru", body: "Inkonsistensi PNR-135 berasal dari entitas “Tamu” yang tidak ada di ERD v3.", source: "Temuan sendiri · PNR-135", date: "2026-10-31", pinned: true },
+    ],
+    usage: series(2.0, 0.8, 3),
+  },
+  {
+    id: "bima",
+    model: "Claude Opus 5.5",
+    description: "Merancang arsitektur, ERD, dan kontrak API. Menulis kerangka kode lalu menyerahkannya ke engineer manusia untuk ditinjau.",
+    skills: ["Arsitektur", "ERD", "OpenAPI", "NestJS", "PostgreSQL", "Cloudflare"],
+    budget: 250000, spent: 118900, tasksDone: 38, avgMinutes: 74, approvalRate: 91,
+    currentTask: "Rancangan API modul undangan",
+    supervisorId: "andi",
+    tools: [
+      { name: "GitHub", scope: "org kuli-digital · 6 repo", mode: "baca-tulis" },
+      { name: "Garap · Dokumen", scope: "Semua proyek", mode: "baca-tulis" },
+      { name: "Cloudflare", scope: "Akun staging", mode: "persetujuan" },
+      { name: "Database produksi", scope: "—", mode: "nonaktif" },
+    ],
+    learnings: [
+      { title: "Pakai UUID v7 untuk semua primary key baru", body: "Disepakati di rapat arsitektur 22 Okt agar urut waktu.", source: "Notulen rapat arsitektur", date: "2026-10-22", pinned: true },
+      { title: "Webhook iPaymu wajib idempoten", body: "Simpan reference_id dan tolak duplikat; iPaymu bisa kirim ulang hingga 5x.", source: "Insiden staging · 19 Okt", date: "2026-10-19" },
+    ],
+    usage: series(4.6, 2.1, 4),
+  },
+  {
+    id: "dewi",
+    model: "Claude Sonnet 5.5",
+    description: "Mengurus pipeline CI/CD, environment staging, dan monitoring. Akses ke server selalu lewat persetujuan.",
+    skills: ["GitHub Actions", "Docker", "Cloudflare", "Monitoring", "Postmortem"],
+    budget: 120000, spent: 38200, tasksDone: 22, avgMinutes: 33, approvalRate: 88,
+    currentTask: "Pipeline staging Pinarak — menunggu akses",
+    supervisorId: "rizky",
+    tools: [
+      { name: "GitHub Actions", scope: "6 repo", mode: "baca-tulis" },
+      { name: "Server staging", scope: "staging.pinarak.id", mode: "persetujuan" },
+      { name: "Server produksi", scope: "—", mode: "nonaktif" },
+      { name: "Grafana", scope: "Dashboard tim", mode: "baca" },
+    ],
+    learnings: [{ title: "Deploy staging hanya hari kerja 09.00–17.00", body: "Permintaan Rizky agar ada yang siaga.", source: "Percakapan #engineering", date: "2026-10-20", pinned: true }],
+    usage: series(1.4, 0.8, 5),
+  },
+  {
+    id: "nadia",
+    model: "Claude Opus 5.5",
+    description: "Menyusun rencana sprint, memantau progres, dan menulis laporan mingguan untuk Bhagas dan klien.",
+    skills: ["Perencanaan sprint", "Estimasi", "Laporan", "Risiko", "Notulen"],
+    budget: 150000, spent: 61200, tasksDone: 29, avgMinutes: 45, approvalRate: 93,
+    currentTask: "Rencana Sprint 4 — menunggu persetujuan",
+    supervisorId: "bhagas",
+    tools: [
+      { name: "Garap · Tiket", scope: "Semua proyek", mode: "baca-tulis" },
+      { name: "Google Calendar", scope: "Kalender tim", mode: "persetujuan" },
+      { name: "Gmail", scope: "Laporan ke klien", mode: "persetujuan" },
+    ],
+    learnings: [
+      { title: "Kapasitas manusia dihitung 6 jam fokus/hari", body: "Bhagas: jangan pakai 8 jam, sisakan untuk rapat & review.", source: "Koreksi rencana Sprint 3", date: "2026-10-12", pinned: true },
+      { title: "Laporan mingguan dikirim Jumat 16.00", body: "Format: 3 poin capaian, 2 risiko, 1 keputusan yang dibutuhkan.", source: "Permintaan Bhagas", date: "2026-09-26" },
+    ],
+    usage: series(2.4, 1.2, 6),
+  },
+  {
+    id: "sekar",
+    model: "Claude Sonnet 5.5",
+    description: "Menjawab pertanyaan klien di portal bantuan, membuat ringkasan keluhan, dan menjadwalkan sesi onboarding.",
+    skills: ["Dukungan klien", "Onboarding", "FAQ", "Ringkasan tiket"],
+    budget: 80000, spent: 22900, tasksDone: 112, avgMinutes: 6, approvalRate: 96,
+    currentTask: "Sesi onboarding HRIS untuk tim HR PT Sinar Abadi",
+    supervisorId: "sari",
+    tools: [
+      { name: "Portal bantuan", scope: "Semua produk", mode: "baca-tulis" },
+      { name: "WhatsApp Business", scope: "Nomor dukungan", mode: "persetujuan" },
+    ],
+    learnings: [{ title: "Sapaan ke klien HRIS: “Bapak/Ibu”", body: "Hindari “kak”.", source: "Masukan Sari", date: "2026-10-03" }],
+    usage: series(0.9, 0.4, 7),
+  },
+  {
+    id: "bayu",
+    model: "Claude Haiku 5.5",
+    description: "Menjalankan uji regresi otomatis dan uji eksploratif di staging, lalu membuat tiket bug dengan langkah reproduksi.",
+    skills: ["Playwright", "Uji regresi", "Laporan bug", "Uji API"],
+    budget: 60000, spent: 19700, tasksDone: 86, avgMinutes: 12, approvalRate: 98,
+    currentTask: "Uji regresi build 1.4 Ider",
+    supervisorId: "hendra",
+    tools: [
+      { name: "Staging · semua produk", scope: "Akun uji", mode: "baca-tulis" },
+      { name: "Garap · Tiket", scope: "Semua proyek", mode: "baca-tulis" },
+    ],
+    learnings: [{ title: "Bug visual diberi label Design, bukan Frontend", body: "Agar Dimas ikut melihat.", source: "Koreksi Hendra", date: "2026-10-16" }],
+    usage: series(0.8, 0.4, 8),
+  },
+  {
+    id: "tari",
+    model: "Claude Sonnet 5.5",
+    description: "Menulis panduan pengguna, dokumentasi API, dan catatan rilis dari tiket yang selesai.",
+    skills: ["Dokumentasi API", "Panduan pengguna", "Catatan rilis"],
+    budget: 60000, spent: 14600, tasksDone: 19, avgMinutes: 41, approvalRate: 95,
+    currentTask: "Panduan API Pinarak (draf)",
+    supervisorId: "laras",
+    tools: [
+      { name: "Garap · Dokumen", scope: "Semua proyek", mode: "baca-tulis" },
+      { name: "GitHub", scope: "Repo docs", mode: "baca-tulis" },
+    ],
+    learnings: [],
+    usage: series(0.6, 0.4, 9),
+  },
+  {
+    id: "dian",
+    model: "Claude Sonnet 5.5",
+    description: "Menulis copy kampanye, caption media sosial, dan draf artikel sesuai suara brand Kuli Digital.",
+    skills: ["Copywriting", "Caption", "SEO", "Suara brand"],
+    budget: 60000, spent: 18400, tasksDone: 41, avgMinutes: 9, approvalRate: 92,
+    currentTask: "Copy kampanye “Undangan tanpa ribet”",
+    supervisorId: "mega",
+    tools: [
+      { name: "Garap · Tiket", scope: "Marketing & Kreatif", mode: "baca-tulis" },
+      { name: "Meta Business Suite", scope: "Akun Pinarak", mode: "persetujuan" },
+    ],
+    learnings: [{ title: "Hindari kata “murah”, pakai “terjangkau”", body: "Arahan Mega untuk semua materi Pinarak.", source: "Revisi caption", date: "2026-10-21", pinned: true }],
+    usage: series(0.6, 0.3, 10),
+  },
+  {
+    id: "kirana",
+    model: "Claude Sonnet 5.5",
+    description: "Mengelola kalender konten: mengubah jadwal rutin jadi tiket, menulis naskah & caption per platform, mengajukan jadwal tayang untuk disetujui, dan merangkum performa mingguan.",
+    skills: ["Kalender konten", "Naskah video", "Caption per platform", "Hashtag", "Laporan performa"],
+    budget: 90000, spent: 21300, tasksDone: 18, avgMinutes: 7, approvalRate: 95,
+    currentTask: "Menyusun caption Reels behind-the-scenes",
+    supervisorId: "mega",
+    tools: [
+      { name: "Garap · Tiket & kalender", scope: "Konten Media Sosial", mode: "baca-tulis" },
+      { name: "Publikasi sosmed", scope: "Instagram, TikTok, YouTube, LinkedIn", mode: "persetujuan" },
+      { name: "Statistik sosmed", scope: "Semua akun terhubung", mode: "baca" },
+    ],
+    learnings: [
+      { title: "Reels tayang 19.00, LinkedIn 10.00", body: "Jam dengan jangkauan terbaik dari data Oktober.", source: "Laporan performa", date: "2026-10-31", pinned: true },
+      { title: "Caption TikTok maksimal 2 kalimat", body: "Arahan Mega: hook di kalimat pertama, CTA di kalimat kedua.", source: "Revisi caption", date: "2026-10-28" },
+    ],
+    usage: series(0.7, 0.3, 14),
+  },
+  {
+    id: "raga",
+    model: "Claude Haiku 5.5",
+    description: "Membantu editor video: membuat subtitle, memotong klip pendek dari video panjang, menyiapkan thumbnail & versi 9:16. Penyuntingan kreatif tetap oleh Galih.",
+    skills: ["Subtitle", "Potong klip", "Thumbnail", "Resize 9:16"],
+    budget: 50000, spent: 6200, tasksDone: 7, avgMinutes: 12, approvalRate: 100,
+    currentTask: "Siaga",
+    supervisorId: "galih",
+    tools: [
+      { name: "Garap · Tiket", scope: "Konten Media Sosial, Brand Q4", mode: "baca-tulis" },
+      { name: "Penyimpanan aset video", scope: "Folder Konten", mode: "baca-tulis" },
+    ],
+    learnings: [],
+    usage: series(0.3, 0.2, 21),
+  },
+];
+
+/** Template peran untuk "Rekrut agent". */
+export const agentTemplates = [
+  { role: "Business Analyst", desc: "Brief klien → BRD & user story", model: "Claude Opus 5.5", skills: ["BRD", "User story"] },
+  { role: "System Analyst", desc: "BRD → SRS & alur sistem", model: "Claude Sonnet 5.5", skills: ["SRS", "Use case"] },
+  { role: "Solution Architect", desc: "Arsitektur, ERD, kontrak API", model: "Claude Opus 5.5", skills: ["ERD", "OpenAPI"] },
+  { role: "QA Tester", desc: "Uji regresi & laporan bug", model: "Claude Haiku 5.5", skills: ["Playwright", "Laporan bug"] },
+  { role: "Technical Writer", desc: "Dokumentasi & catatan rilis", model: "Claude Sonnet 5.5", skills: ["Dokumentasi API"] },
+  { role: "Data Analyst", desc: "Laporan, metrik, dan dashboard", model: "Claude Sonnet 5.5", skills: ["SQL", "Visualisasi"] },
+  { role: "Marketing Writer", desc: "Copy landing page & konten", model: "Claude Sonnet 5.5", skills: ["Copywriting", "SEO"] },
+  { role: "Customer Success", desc: "Bantuan klien & onboarding", model: "Claude Haiku 5.5", skills: ["FAQ", "Onboarding"] },
+  { role: "Social Media Manager", desc: "Kalender konten, caption & jadwal tayang", model: "Claude Sonnet 5.5", skills: ["Kalender konten", "Caption", "Hashtag"] },
+  { role: "Asisten Video Editor", desc: "Subtitle, potong klip, thumbnail", model: "Claude Haiku 5.5", skills: ["Subtitle", "Potong klip", "Thumbnail"] },
+];

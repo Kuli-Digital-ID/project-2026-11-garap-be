@@ -1,0 +1,725 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ============================================
+// RBAC & akun
+// ============================================
+
+/// Anggota tim: manusia (login lewat SSO) atau agent AI.
+model User {
+  id            Int       @id @default(autoincrement())
+  /// Handle unik, mis. "bhagas". Dipakai FE sebagai id anggota & untuk @mention.
+  username      String    @unique
+  email         String    @unique
+  /// Kosong untuk akun SSO & agent. Hanya dipakai bila AUTH_PASSWORD_LOGIN=true.
+  password      String?
+  first_name    String
+  last_name     String    @default("")
+  /// Nama panggilan yang tampil di UI, mis. "Bhagas".
+  display_name  String
+  initials      String
+  color         String?
+  kind          String    @default("human") // human | agent
+  /// Jabatan, mis. "Product Owner".
+  role          String    @default("")
+  team          String    @default("")
+  status        String    @default("offline") // online | fokus | offline | bekerja | menunggu | idle
+  floor         String?
+  division_id   Int?
+  sso_subject   String?   @unique
+  last_login_at DateTime?
+  joined_at     DateTime  @default(now())
+  is_active     Boolean   @default(true)
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+  deleted_at    DateTime?
+
+  position_id Int
+  position    Position  @relation(fields: [position_id], references: [id])
+  division    Division? @relation("DivisionMembers", fields: [division_id], references: [id], onDelete: SetNull)
+
+  agent_profile      AgentProfile?  @relation("AgentProfileUser")
+  supervised_agents  AgentProfile[] @relation("AgentSupervisor")
+  led_divisions      Division[]     @relation("DivisionLead")
+  led_projects       Project[]      @relation("ProjectLead")
+  project_members    ProjectMember[]
+  assigned_tickets   Ticket[]       @relation("TicketAssignee")
+  reported_tickets   Ticket[]       @relation("TicketReporter")
+  watching           TicketWatcher[]
+  comments           Comment[]
+  attachments        Attachment[]
+  owned_epics        Epic[]
+  requests           WorkRequest[]
+  authored_docs      Doc[]          @relation("DocAuthor")
+  reviewed_docs      Doc[]          @relation("DocReviewer")
+  agent_approvals    Approval[]     @relation("ApprovalAgent")
+  decided_approvals  Approval[]     @relation("ApprovalDecider")
+  notifications      Notification[] @relation("NotificationRecipient")
+  sent_notifications Notification[] @relation("NotificationActor")
+  audit_logs         AuditLog[]
+  agent_runs         AgentRun[]
+  ai_providers       AiProvider[]
+  social_channels    SocialChannel[]
+  content_schedules  ContentSchedule[] @relation("ScheduleAssignee")
+  approved_posts     ContentPost[]     @relation("PostApprover")
+
+  @@index([division_id])
+  @@map("users")
+}
+
+/// Hak akses: Owner, Admin, Anggota, Tamu, Agent.
+model Position {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique
+  description String?
+  is_active   Boolean   @default(true)
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+  deleted_at  DateTime?
+
+  users                User[]
+  position_permissions PositionPermission[]
+
+  @@map("positions")
+}
+
+model Permission {
+  id          Int       @id @default(autoincrement())
+  name        String    @unique
+  description String?
+  resource    String
+  action      String
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+  deleted_at  DateTime?
+
+  position_permissions PositionPermission[]
+
+  @@map("permissions")
+}
+
+model PositionPermission {
+  id            Int      @id @default(autoincrement())
+  position_id   Int
+  permission_id Int
+  created_at    DateTime @default(now())
+
+  position   Position   @relation(fields: [position_id], references: [id], onDelete: Cascade)
+  permission Permission @relation(fields: [permission_id], references: [id], onDelete: Cascade)
+
+  @@unique([position_id, permission_id])
+  @@map("position_permissions")
+}
+
+// ============================================
+// Organisasi
+// ============================================
+
+model Division {
+  id            Int       @id @default(autoincrement())
+  slug          String    @unique
+  name          String
+  color         String
+  description   String    @default("")
+  /// Jenis permintaan yang bisa diajukan divisi lain.
+  request_kinds String[]
+  lead_id       Int?
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+  deleted_at    DateTime?
+
+  lead     User?         @relation("DivisionLead", fields: [lead_id], references: [id], onDelete: SetNull)
+  members  User[]        @relation("DivisionMembers")
+  projects Project[]
+  requests WorkRequest[]
+
+  @@map("divisions")
+}
+
+model AgentProfile {
+  id            Int      @id @default(autoincrement())
+  user_id       Int      @unique
+  /// Penyedia model: anthropic | google | xai | openai | openrouter | compatible
+  provider      String   @default("anthropic")
+  /// Id model di API penyedia, mis. "gemini-2.5-pro".
+  model_id      String?
+  /// Nama model yang tampil, mis. "Gemini 2.5 Pro".
+  model         String
+  description   String   @default("")
+  skills        String[]
+  /// Kuota biaya per bulan (rupiah).
+  budget        Int      @default(0)
+  spent         Int      @default(0)
+  tasks_done    Int      @default(0)
+  avg_minutes   Int      @default(0)
+  approval_rate Int      @default(0)
+  current_task  String?
+  supervisor_id Int?
+  /// [{ name, scope, mode }]
+  tools         Json     @default("[]")
+  /// [{ title, body, source, date, pinned }]
+  learnings     Json     @default("[]")
+  /// Biaya per hari (ribu rupiah), 30 hari terakhir.
+  usage         Int[]
+  created_at    DateTime @default(now())
+  updated_at    DateTime @updatedAt
+
+  user       User  @relation("AgentProfileUser", fields: [user_id], references: [id], onDelete: Cascade)
+  supervisor User? @relation("AgentSupervisor", fields: [supervisor_id], references: [id], onDelete: SetNull)
+
+  @@map("agent_profiles")
+}
+
+/// Koneksi workspace ke penyedia AI. API key disimpan terenkripsi (AES-256-GCM).
+model AiProvider {
+  id             Int       @id @default(autoincrement())
+  provider       String    @unique // anthropic | google | xai | openai | openrouter | compatible
+  /// iv:tag:ciphertext (base64). Kosong untuk server lokal tanpa key.
+  api_key_enc    String?
+  key_hint       String    @default("")
+  base_url       String?
+  /// Id model hasil uji koneksi terakhir.
+  models         String[]
+  status         String    @default("terhubung") // terhubung | gagal
+  last_error     String?
+  last_tested_at DateTime?
+  added_by       Int?
+  created_at     DateTime  @default(now())
+  updated_at     DateTime  @updatedAt
+
+  adder User? @relation(fields: [added_by], references: [id], onDelete: SetNull)
+
+  @@map("ai_providers")
+}
+
+// ============================================
+// Proyek
+// ============================================
+
+model Project {
+  id          Int       @id @default(autoincrement())
+  slug        String    @unique
+  key         String    @unique
+  name        String
+  color       String
+  description String    @default("")
+  client      String    @default("")
+  template    String    @default("software") // software | kanban | kreatif | konten
+  status      String    @default("Perencanaan") // Berjalan | Perencanaan | Ditahan | Selesai
+  start_date  DateTime? @db.Date
+  target_date DateTime? @db.Date
+  /// Nomor terakhir tiket (untuk kunci PNR-1, PNR-2, ...).
+  ticket_seq  Int       @default(0)
+  lead_id     Int?
+  division_id Int?
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+  deleted_at  DateTime?
+
+  lead      User?            @relation("ProjectLead", fields: [lead_id], references: [id], onDelete: SetNull)
+  division  Division?        @relation(fields: [division_id], references: [id], onDelete: SetNull)
+  members   ProjectMember[]
+  workflow  WorkflowStatus[]
+  sprints   Sprint[]
+  epics     Epic[]
+  tickets   Ticket[]
+  docs      Doc[]
+  requests  WorkRequest[]
+  approvals Approval[]
+  runs      AgentRun[]
+  channels  ProjectChannel[]
+  schedules ContentSchedule[]
+
+  @@map("projects")
+}
+
+model ProjectMember {
+  id         Int      @id @default(autoincrement())
+  project_id Int
+  user_id    Int
+  created_at DateTime @default(now())
+
+  project Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  user    User    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([project_id, user_id])
+  @@map("project_members")
+}
+
+/// Satu kolom/status di alur kerja proyek.
+model WorkflowStatus {
+  id         Int      @id @default(autoincrement())
+  project_id Int
+  /// Kode status di dalam proyek, mis. "qa".
+  code       String
+  name       String
+  category   String // todo | progress | review | done
+  color      String
+  wip        Int?
+  position   Int      @default(0)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  project Project  @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  tickets Ticket[]
+
+  @@unique([project_id, code])
+  @@map("workflow_statuses")
+}
+
+model Sprint {
+  id           Int       @id @default(autoincrement())
+  project_id   Int
+  name         String
+  goal         String    @default("")
+  start_date   DateTime  @db.Date
+  end_date     DateTime  @db.Date
+  state        String    @default("aktif") // rencana | aktif | selesai
+  completed_at DateTime?
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+
+  project Project  @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  tickets Ticket[]
+
+  @@index([project_id, state])
+  @@map("sprints")
+}
+
+model Epic {
+  id         Int       @id @default(autoincrement())
+  project_id Int
+  name       String
+  color      String
+  /// Minggu ke- pada linimasa proyek.
+  start_week Int       @default(0)
+  weeks      Int       @default(1)
+  progress   Int       @default(0)
+  owner_id   Int?
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+
+  project Project  @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  owner   User?    @relation(fields: [owner_id], references: [id], onDelete: SetNull)
+  tickets Ticket[]
+
+  @@map("epics")
+}
+
+// ============================================
+// Tiket
+// ============================================
+
+model Ticket {
+  id          Int       @id @default(autoincrement())
+  key         String    @unique
+  number      Int
+  project_id  Int
+  title       String
+  description String    @default("")
+  type        String    @default("task") // story | task | bug | dokumen | desain | konten
+  status_id   Int
+  priority    String    @default("sedang") // rendah | sedang | tinggi | mendesak
+  labels      String[]
+  points      Int?
+  due_date    DateTime? @db.Date
+  /// Urutan di kolom/backlog (makin kecil makin atas).
+  rank        Float     @default(0)
+  assignee_id Int?
+  reporter_id Int
+  epic_id     Int?
+  /// Kosong = backlog.
+  sprint_id   Int?
+  parent_id   Int?
+  /// { tone, text }
+  agent_note  Json?
+  /// { branch, prs: [...], commits }
+  dev         Json?
+  /// Tiket konten: video | short | reels | carousel | foto | story | teks | thread | artikel
+  content_format String?
+  /// Dibuat otomatis dari jadwal konten rutin.
+  schedule_id    Int?
+  occurrence     DateTime? @db.Date
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+  deleted_at  DateTime?
+
+  project     Project         @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  status      WorkflowStatus  @relation(fields: [status_id], references: [id])
+  assignee    User?           @relation("TicketAssignee", fields: [assignee_id], references: [id], onDelete: SetNull)
+  reporter    User            @relation("TicketReporter", fields: [reporter_id], references: [id])
+  epic        Epic?           @relation(fields: [epic_id], references: [id], onDelete: SetNull)
+  sprint      Sprint?         @relation(fields: [sprint_id], references: [id], onDelete: SetNull)
+  parent      Ticket?         @relation("Subtasks", fields: [parent_id], references: [id], onDelete: SetNull)
+  subtasks    Ticket[]        @relation("Subtasks")
+  checklist   ChecklistItem[]
+  comments    Comment[]
+  attachments Attachment[]
+  watchers    TicketWatcher[]
+  links_out   TicketLink[]    @relation("LinkFrom")
+  links_in    TicketLink[]    @relation("LinkTo")
+  request     WorkRequest?
+  runs        AgentRun[]
+  schedule    ContentSchedule? @relation(fields: [schedule_id], references: [id], onDelete: SetNull)
+  posts       ContentPost[]
+
+  @@unique([project_id, number])
+  @@unique([schedule_id, occurrence])
+  @@index([project_id, status_id])
+  @@index([assignee_id])
+  @@index([sprint_id])
+  @@map("tickets")
+}
+
+model ChecklistItem {
+  id         Int      @id @default(autoincrement())
+  ticket_id  Int
+  text       String
+  done       Boolean  @default(false)
+  position   Int      @default(0)
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  ticket Ticket @relation(fields: [ticket_id], references: [id], onDelete: Cascade)
+
+  @@map("checklist_items")
+}
+
+model Comment {
+  id         Int       @id @default(autoincrement())
+  ticket_id  Int
+  author_id  Int
+  body       String
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+  deleted_at DateTime?
+
+  ticket Ticket @relation(fields: [ticket_id], references: [id], onDelete: Cascade)
+  author User   @relation(fields: [author_id], references: [id])
+
+  @@index([ticket_id])
+  @@map("comments")
+}
+
+model TicketWatcher {
+  ticket_id Int
+  user_id   Int
+
+  ticket Ticket @relation(fields: [ticket_id], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@id([ticket_id, user_id])
+  @@map("ticket_watchers")
+}
+
+/// Relasi antar tiket. "memblokir" disimpan satu arah; sisi lain dibaca sebagai "diblokir".
+model TicketLink {
+  id         Int      @id @default(autoincrement())
+  from_id    Int
+  to_id      Int
+  type       String // memblokir | terkait | duplikat
+  created_at DateTime @default(now())
+
+  from Ticket @relation("LinkFrom", fields: [from_id], references: [id], onDelete: Cascade)
+  to   Ticket @relation("LinkTo", fields: [to_id], references: [id], onDelete: Cascade)
+
+  @@unique([from_id, to_id, type])
+  @@map("ticket_links")
+}
+
+model Attachment {
+  id          Int      @id @default(autoincrement())
+  ticket_id   Int?
+  request_id  Int?
+  name        String
+  /// Ukuran dalam byte.
+  size        Int      @default(0)
+  kind        String   @default("lainnya") // gambar | pdf | dokumen | video | lainnya
+  url         String?
+  uploader_id Int
+  created_at  DateTime @default(now())
+
+  ticket   Ticket?      @relation(fields: [ticket_id], references: [id], onDelete: Cascade)
+  request  WorkRequest? @relation(fields: [request_id], references: [id], onDelete: Cascade)
+  uploader User         @relation(fields: [uploader_id], references: [id])
+
+  @@map("attachments")
+}
+
+// ============================================
+// Permintaan lintas divisi
+// ============================================
+
+model WorkRequest {
+  id            Int       @id @default(autoincrement())
+  code          String    @unique
+  title         String
+  detail        String    @default("")
+  division_id   Int
+  kind          String
+  requester_id  Int
+  priority      String    @default("sedang")
+  due_date      DateTime? @db.Date
+  references    String[]
+  status        String    @default("baru") // baru | ditinjau | diterima | ditolak | selesai
+  note          String?
+  agent_summary String?
+  project_id    Int?
+  ticket_id     Int?      @unique
+  created_at    DateTime  @default(now())
+  updated_at    DateTime  @updatedAt
+
+  division    Division     @relation(fields: [division_id], references: [id])
+  requester   User         @relation(fields: [requester_id], references: [id])
+  project     Project?     @relation(fields: [project_id], references: [id], onDelete: SetNull)
+  ticket      Ticket?      @relation(fields: [ticket_id], references: [id], onDelete: SetNull)
+  attachments Attachment[]
+
+  @@index([division_id, status])
+  @@map("work_requests")
+}
+
+// ============================================
+// Dokumen, persetujuan, notifikasi, audit
+// ============================================
+
+model Doc {
+  id          Int       @id @default(autoincrement())
+  slug        String    @unique
+  project_id  Int
+  title       String
+  kind        String // BRD | SRS | Arsitektur | Rencana | Notulen | Panduan
+  status      String    @default("Draf") // Draf | Direview | Disetujui
+  version     String    @default("0.1")
+  pages       Int       @default(1)
+  /// [{ heading, body }]
+  sections    Json      @default("[]")
+  author_id   Int
+  reviewer_id Int?
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+  deleted_at  DateTime?
+
+  project  Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  author   User    @relation("DocAuthor", fields: [author_id], references: [id])
+  reviewer User?   @relation("DocReviewer", fields: [reviewer_id], references: [id], onDelete: SetNull)
+
+  @@map("docs")
+}
+
+/// Tindakan agent yang butuh persetujuan manusia.
+model Approval {
+  id         Int       @id @default(autoincrement())
+  agent_id   Int
+  project_id Int
+  kind       String // akses | pesan-klien | dokumen | biaya
+  title      String
+  detail     String    @default("")
+  preview    String?
+  risk       String    @default("rendah") // rendah | sedang | tinggi
+  status     String    @default("menunggu") // menunggu | disetujui | ditolak
+  decided_by Int?
+  decided_at DateTime?
+  /// Untuk kind "publikasi".
+  content_post_id Int?
+  created_at DateTime  @default(now())
+  updated_at DateTime  @updatedAt
+
+  agent   User    @relation("ApprovalAgent", fields: [agent_id], references: [id], onDelete: Cascade)
+  decider User?   @relation("ApprovalDecider", fields: [decided_by], references: [id], onDelete: SetNull)
+  project Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  post    ContentPost? @relation(fields: [content_post_id], references: [id], onDelete: Cascade)
+
+  @@index([status])
+  @@map("approvals")
+}
+
+model AgentRun {
+  id         Int      @id @default(autoincrement())
+  code       String   @unique
+  agent_id   Int
+  project_id Int
+  ticket_id  Int?
+  title      String
+  status     String // berhasil | berjalan | gagal | menunggu
+  started_at DateTime
+  duration   String   @default("")
+  tokens_in  Int      @default(0)
+  tokens_out Int      @default(0)
+  /// Biaya dalam rupiah.
+  cost       Int      @default(0)
+  /// [{ t, kind, title, detail }]
+  steps      Json     @default("[]")
+  created_at DateTime @default(now())
+
+  agent   User    @relation(fields: [agent_id], references: [id], onDelete: Cascade)
+  project Project @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  ticket  Ticket? @relation(fields: [ticket_id], references: [id], onDelete: SetNull)
+
+  @@index([agent_id])
+  @@map("agent_runs")
+}
+
+model Notification {
+  id           Int       @id @default(autoincrement())
+  recipient_id Int
+  actor_id     Int?
+  kind         String // mention | assign | approval | agent | comment | status
+  text         String
+  target       String?
+  href         String    @default("/")
+  project_slug String?
+  read_at      DateTime?
+  created_at   DateTime  @default(now())
+
+  recipient User  @relation("NotificationRecipient", fields: [recipient_id], references: [id], onDelete: Cascade)
+  actor     User? @relation("NotificationActor", fields: [actor_id], references: [id], onDelete: SetNull)
+
+  @@index([recipient_id, read_at])
+  @@map("notifications")
+}
+
+model AuditLog {
+  id         Int      @id @default(autoincrement())
+  actor_id   Int?
+  action     String
+  target     String
+  category   String // akses | agent | proyek | keamanan | tagihan
+  ip         String?
+  created_at DateTime @default(now())
+
+  actor User? @relation(fields: [actor_id], references: [id], onDelete: SetNull)
+
+  @@index([created_at])
+  @@map("audit_logs")
+}
+
+// ============================================
+// Konten & media sosial
+// ============================================
+
+/// Akun sosmed workspace. Token OAuth disimpan terenkripsi. Tanpa token = mode manual.
+model SocialChannel {
+  id                Int       @id @default(autoincrement())
+  platform          String // youtube | instagram | facebook | tiktok | linkedin | x
+  name              String
+  handle            String
+  /// Id akun di platform (channel id, IG user id, page id, open_id, urn, user id).
+  external_id       String?
+  /// otomatis | manual
+  mode              String    @default("manual")
+  /// terhubung | perlu-login-ulang
+  status            String    @default("terhubung")
+  access_token_enc  String?
+  refresh_token_enc String?
+  token_expires_at  DateTime?
+  scopes            String[]
+  /// Data tambahan per platform (mis. page_id untuk Instagram).
+  meta              Json      @default("{}")
+  added_by          Int?
+  created_at        DateTime  @default(now())
+  updated_at        DateTime  @updatedAt
+  deleted_at        DateTime?
+
+  adder     User?             @relation(fields: [added_by], references: [id], onDelete: SetNull)
+  projects  ProjectChannel[]
+  posts     ContentPost[]
+
+  @@unique([platform, external_id])
+  @@map("social_channels")
+}
+
+model ProjectChannel {
+  project_id Int
+  channel_id Int
+
+  project Project       @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  channel SocialChannel @relation(fields: [channel_id], references: [id], onDelete: Cascade)
+
+  @@id([project_id, channel_id])
+  @@map("project_channels")
+}
+
+/// Konten rutin: setiap hari terpilih, tiket konten dibuat H-n sebelum tayang.
+model ContentSchedule {
+  id          Int       @id @default(autoincrement())
+  project_id  Int
+  title       String
+  format      String
+  channel_ids Int[]
+  /// 0 = Minggu … 6 = Sabtu
+  days        Int[]
+  /// Jam tayang WIB, "19:00"
+  time        String
+  lead_days   Int       @default(3)
+  assignee_id Int?
+  checklist   String[]
+  active      Boolean   @default(true)
+  created_by  Int?
+  created_at  DateTime  @default(now())
+  updated_at  DateTime  @updatedAt
+
+  project  Project  @relation(fields: [project_id], references: [id], onDelete: Cascade)
+  assignee User?    @relation("ScheduleAssignee", fields: [assignee_id], references: [id], onDelete: SetNull)
+  tickets  Ticket[]
+
+  @@map("content_schedules")
+}
+
+/// Satu publikasi tiket konten ke satu akun sosmed.
+model ContentPost {
+  id           Int       @id @default(autoincrement())
+  ticket_id    Int
+  channel_id   Int
+  title        String?
+  caption      String    @default("")
+  scheduled_at DateTime?
+  /// draf | menunggu | terjadwal | memproses | tayang | gagal
+  status       String    @default("draf")
+  approved_by  Int?
+  approved_at  DateTime?
+  published_at DateTime?
+  external_id  String?
+  url          String?
+  error        String?
+  /// Status proses unggah di platform (container id, publish id, dll.).
+  remote       Json?
+  /// { views, likes, comments, shares }
+  metrics      Json?
+  metrics_at   DateTime?
+  reminded_at  DateTime?
+  created_at   DateTime  @default(now())
+  updated_at   DateTime  @updatedAt
+
+  ticket    Ticket        @relation(fields: [ticket_id], references: [id], onDelete: Cascade)
+  channel   SocialChannel @relation(fields: [channel_id], references: [id], onDelete: Cascade)
+  approver  User?         @relation("PostApprover", fields: [approved_by], references: [id], onDelete: SetNull)
+  approvals Approval[]
+
+  @@unique([ticket_id, channel_id])
+  @@index([status, scheduled_at])
+  @@map("content_posts")
+}
+
+// ============================================
+// Pengaturan perusahaan (satu baris)
+// ============================================
+
+model Workspace {
+  id         Int      @id @default(1)
+  name       String   @default("Kuli Digital")
+  /// Logo perusahaan sebagai data URL (PNG/JPG/SVG/WebP, maks. 512 KB).
+  logo       String?
+  timezone   String   @default("Asia/Jakarta")
+  language   String   @default("id")
+  updated_by Int?
+  updated_at DateTime @updatedAt
+
+  @@map("workspace")
+}
