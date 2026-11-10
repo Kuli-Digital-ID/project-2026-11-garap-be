@@ -10,6 +10,7 @@ import { seedProjects } from './steps/projects.seed';
 import { seedTickets } from './steps/tickets.seed';
 import { seedActivity } from './steps/activity.seed';
 import { seedContent } from './steps/content.seed';
+import { seedEmployees } from './steps/employees.seed';
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool as any);
@@ -29,6 +30,7 @@ async function main() {
   await prisma.workspace.create({ data: { id: 1, name: 'Kuli Digital' } });
   const positions = await seedAccess(prisma);
   const { users, divisions, devPassword } = await seedOrganization(prisma, positions);
+  await seedEmployees(prisma, users);
   const projects = await seedProjects(prisma, users, divisions);
   const tickets = await seedTickets(prisma, users, projects);
   const posts = await seedContent(prisma, users, projects, tickets);

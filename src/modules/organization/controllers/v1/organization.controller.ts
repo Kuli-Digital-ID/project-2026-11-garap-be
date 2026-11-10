@@ -1,10 +1,12 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Ip, Param, ParseIntPipe, Patch, Post, Put, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { GetUser } from '@common/decorators/get-user.decorator';
 import { Permissions } from '@common/decorators/permissions.decorator';
 import { PERMISSIONS } from '@common/constants/permissions.constant';
 import { JwtPayload } from '@modules/auth/core/interfaces/jwt-payload.interface';
 import { OrganizationService } from '../../organization.service';
+import { EmployeesService } from '../../employees.service';
+import { UpdateEmployeeDto, UpdateMyEmployeeDto } from '../../core/dto/employee.dto';
 import {
   CreateAgentDto, CreateDivisionDto, CreateMemberDto, MemberQueryDto, SetPositionPermissionsDto, UpdateAgentDto, UpdateDivisionDto, UpdateMemberDto,
   UpdateMyProfileDto,
@@ -48,7 +50,29 @@ export class DivisionsController {
 @ApiTags('Members')
 @Controller({ path: 'members', version: '1' })
 export class MembersController {
-  constructor(private readonly org: OrganizationService) {}
+  constructor(
+    private readonly org: OrganizationService,
+    private readonly employees: EmployeesService,
+  ) {}
+
+  @Patch('me/employee')
+  @ApiOperation({ summary: 'Ubah data pribadi sendiri (kontak, alamat, identitas, rekening, kontak darurat)' })
+  updateMyEmployee(@GetUser() u: JwtPayload, @Body() dto: UpdateMyEmployeeDto) {
+    return this.employees.updateMine(u, dto);
+  }
+
+  @Get(':username/employee')
+  @Permissions(PERMISSIONS.USER.VIEW)
+  @ApiOperation({ summary: 'Data karyawan. Lengkap untuk pemilik profil & Owner (tercatat di audit); selain itu hanya data publik.' })
+  employee(@GetUser() u: JwtPayload, @Param('username') username: string, @Ip() ip: string) {
+    return this.employees.get(u, username, ip);
+  }
+
+  @Patch(':username/employee')
+  @ApiOperation({ summary: 'Ubah data karyawan (khusus Owner)' })
+  updateEmployee(@GetUser() u: JwtPayload, @Param('username') username: string, @Body() dto: UpdateEmployeeDto) {
+    return this.employees.updateAsOwner(u, username, dto);
+  }
 
   @Get()
   @Permissions(PERMISSIONS.USER.VIEW)

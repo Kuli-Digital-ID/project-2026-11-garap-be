@@ -67,6 +67,8 @@ model User {
   social_channels    SocialChannel[]
   content_schedules  ContentSchedule[] @relation("ScheduleAssignee")
   approved_posts     ContentPost[]     @relation("PostApprover")
+  employee           EmployeeProfile?  @relation("EmployeeUser")
+  direct_reports     EmployeeProfile[] @relation("EmployeeManager")
 
   @@index([division_id])
   @@map("users")
@@ -722,4 +724,47 @@ model Workspace {
   updated_at DateTime @updatedAt
 
   @@map("workspace")
+}
+
+// ============================================
+// Data karyawan
+// ============================================
+
+/// Data kepegawaian & pribadi. Kolom *_enc terenkripsi (AES-256-GCM, AI_KEY_SECRET).
+/// Publik: employee_no, manager, work_location, office, start_date, tanggal & bulan lahir.
+/// Sisanya hanya untuk pemilik profil dan Owner.
+model EmployeeProfile {
+  id                   Int       @id @default(autoincrement())
+  user_id              Int       @unique
+  employee_no          String?   @unique
+  manager_id           Int?
+  work_location        String    @default("Kantor") // Kantor | Hybrid | Remote
+  office               String    @default("Jakarta Selatan")
+  start_date           DateTime? @db.Date
+  employment           String    @default("Tetap") // Tetap | Kontrak | Magang | Freelance
+  contract_end         DateTime? @db.Date
+  birth_place          String?
+  birth_date           DateTime? @db.Date
+  gender               String?
+  phone                String?
+  personal_email       String?
+  address              String?
+  nik_enc              String?
+  npwp_enc             String?
+  bpjs_kesehatan_enc   String?
+  bpjs_tk_enc          String?
+  bank_name            String?
+  bank_account_enc     String?
+  bank_holder          String?
+  emergency_name       String?
+  emergency_relation   String?
+  emergency_phone      String?
+  updated_by           Int?
+  created_at           DateTime  @default(now())
+  updated_at           DateTime  @updatedAt
+
+  user    User  @relation("EmployeeUser", fields: [user_id], references: [id], onDelete: Cascade)
+  manager User? @relation("EmployeeManager", fields: [manager_id], references: [id], onDelete: SetNull)
+
+  @@map("employee_profiles")
 }

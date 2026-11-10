@@ -34,6 +34,36 @@ export interface AiConnection {
   lastTested?: string;
 }
 
+/**
+ * Data kepegawaian & pribadi karyawan.
+ * Kolom "publik" boleh dilihat semua anggota; sisanya hanya pemilik profil dan Owner.
+ */
+export interface EmployeeProfile {
+  memberId: string;
+  // Publik
+  employeeId: string;
+  managerId?: string;
+  workLocation: "Kantor" | "Hybrid" | "Remote";
+  office: string;
+  startDate: string;
+  /** Hanya tanggal & bulan yang tampil ke anggota lain. */
+  birthDate?: string;
+  // Pribadi (pemilik & Owner)
+  employment: "Tetap" | "Kontrak" | "Magang" | "Freelance";
+  contractEnd?: string;
+  birthPlace?: string;
+  gender?: "Laki-laki" | "Perempuan";
+  phone?: string;
+  personalEmail?: string;
+  address?: string;
+  nik?: string;
+  npwp?: string;
+  bpjsKesehatan?: string;
+  bpjsKetenagakerjaan?: string;
+  bank?: { name: string; account: string; holder: string };
+  emergency?: { name: string; relation: string; phone: string };
+}
+
 export interface AgentProfile {
   id: string;
   /** Nama model yang tampil, mis. "Gemini 2.5 Pro". */
