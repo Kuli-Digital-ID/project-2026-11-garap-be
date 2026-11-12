@@ -1,10 +1,11 @@
-import { ApiProperty, ApiPropertyOptional, PartialType } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional, OmitType, PartialType } from '@nestjs/swagger';
 import { Transform, Type } from 'class-transformer';
 import {
   IsArray, IsBoolean, IsEmail, IsHexColor, IsIn, IsInt, IsObject, IsOptional, IsString, Matches, Max, MaxLength, Min, MinLength,
 } from 'class-validator';
 import { AI_PROVIDERS, MEMBER_KINDS, MEMBER_STATUSES } from '@common/constants/domain.constant';
 import { POSITION_NAMES } from '@common/constants/permissions.constant';
+import { PASSWORD_MESSAGE, PASSWORD_RULE } from '@modules/auth/core/dto/login.dto';
 
 const SLUG = /^[a-z0-9][a-z0-9-]*$/;
 const USERNAME = /^[a-z0-9][a-z0-9._-]*$/;
@@ -31,7 +32,7 @@ export class MemberQueryDto {
 /** Owner/Admin mendaftarkan akun. Tidak ada pendaftaran mandiri. */
 export class CreateMemberDto {
   @ApiProperty({ example: 'galih' }) @IsString() @Matches(USERNAME, { message: 'username: huruf kecil, angka, titik, garis bawah, tanda hubung' }) @MaxLength(40) username: string;
-  @ApiProperty({ example: 'galih@kulidigital.id', description: 'Email kantor yang dipakai di Keycloak' }) @IsEmail() email: string;
+  @ApiProperty({ example: 'galih@kulidigital.id', description: 'Email untuk masuk' }) @IsEmail() email: string;
   @ApiProperty({ example: 'Galih Pratama' }) @IsString() @MinLength(2) @MaxLength(80) fullName: string;
   @ApiPropertyOptional({ example: 'Galih', description: 'Nama panggilan; default kata pertama nama lengkap' }) @IsOptional() @IsString() @MaxLength(40) name?: string;
   @ApiPropertyOptional({ example: 'Motion & Video Editor' }) @IsOptional() @IsString() role?: string;
@@ -39,11 +40,18 @@ export class CreateMemberDto {
   @ApiPropertyOptional({ example: 'kreatif' }) @IsOptional() @IsString() division?: string;
   @ApiPropertyOptional({ enum: POSITION_NAMES.filter((p) => p !== 'Agent'), default: 'Anggota' }) @IsOptional() @IsIn(POSITION_NAMES.filter((p) => p !== 'Agent')) access?: string;
   @ApiPropertyOptional({ example: '#C7D2FE' }) @IsOptional() @IsHexColor() color?: string;
+  @ApiPropertyOptional({ description: `Password awal. Kosongkan agar dibuatkan password sementara (tampil sekali di respons). ${PASSWORD_MESSAGE}.` })
+  @IsOptional() @IsString() @Matches(PASSWORD_RULE, { message: PASSWORD_MESSAGE }) password?: string;
 }
 
-export class UpdateMemberDto extends PartialType(CreateMemberDto) {
+export class UpdateMemberDto extends PartialType(OmitType(CreateMemberDto, ['password'] as const)) {
   @ApiPropertyOptional({ enum: MEMBER_STATUSES }) @IsOptional() @IsIn(MEMBER_STATUSES) status?: string;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() isActive?: boolean;
+}
+
+export class ResetPasswordDto {
+  @ApiPropertyOptional({ description: `Password baru. Kosongkan agar dibuatkan password sementara. ${PASSWORD_MESSAGE}.` })
+  @IsOptional() @IsString() @Matches(PASSWORD_RULE, { message: PASSWORD_MESSAGE }) password?: string;
 }
 
 export class UpdateMyProfileDto {

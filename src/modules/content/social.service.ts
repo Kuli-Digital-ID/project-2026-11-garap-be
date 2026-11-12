@@ -8,7 +8,7 @@ import { SecretBox } from '@common/utils/secret-box.util';
 import { channelInclude, toChannel } from '@common/serializers';
 import { JwtPayload } from '@modules/auth/core/interfaces/jwt-payload.interface';
 import { AuditService } from '@modules/activity/audit.service';
-import { pkce, randomState, safeRedirect } from '@modules/auth/core/helpers/oidc';
+import { pkce, randomState, safeRedirect } from '@common/utils/oauth.util';
 import { ManualChannelDto, UpdateChannelDto } from './core/dto/content.dto';
 import { OAUTH, PlatformError, authorizeUrl, exchangeCode, identities, oauthReady, refreshToken } from './core/helpers/platforms';
 

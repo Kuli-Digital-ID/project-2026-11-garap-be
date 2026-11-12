@@ -7,7 +7,7 @@ import {
 import { ATTACHMENT_KINDS, LINK_TYPES, PRIORITIES, TICKET_TYPES } from '@common/constants/domain.constant';
 
 export class TicketQueryDto {
-  @ApiPropertyOptional({ example: 'pinarak', description: 'Wajib di /tickets bila tidak memakai assignee' }) @IsOptional() @IsString() project?: string;
+  @ApiPropertyOptional({ example: 'pinarak', description: 'Kosong = semua proyek yang boleh dilihat (Beranda, Semua tiket)' }) @IsOptional() @IsString() project?: string;
   @ApiPropertyOptional({ description: '"active" (sprint aktif), "backlog", "all", atau id sprint', example: 'active' }) @IsOptional() @IsString() sprint?: string;
   @ApiPropertyOptional({ example: 'progress', description: 'Kode status alur kerja' }) @IsOptional() @IsString() status?: string;
   @ApiPropertyOptional({ enum: ['todo', 'progress', 'review', 'done'] }) @IsOptional() @IsIn(['todo', 'progress', 'review', 'done']) category?: string;

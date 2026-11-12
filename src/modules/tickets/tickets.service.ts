@@ -2,7 +2,8 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@common/prisma/prisma.service';
 import { isManager, projectScope } from '@common/helpers/access';
-import { ticketDetailInclude, ticketListInclude, toAttachment, toTicket } from '@common/serializers';
+import { attachmentSelect, ticketDetailInclude, ticketListInclude, toAttachment, toTicket } from '@common/serializers';
+import { FilesService, UploadedDiskFile } from '@modules/files/files.service';
 import { JwtPayload } from '@modules/auth/core/interfaces/jwt-payload.interface';
 import { NotificationsService } from '@modules/activity/notifications.service';
 import { ProjectsService } from '@modules/projects/projects.service';
@@ -22,6 +23,7 @@ export class TicketsService {
     private prisma: PrismaService,
     private projects: ProjectsService,
     private notifications: NotificationsService,
+    private files: FilesService,
   ) {}
 
   // ---------- helper ----------
@@ -99,7 +101,6 @@ export class TicketsService {
 
   async list(user: JwtPayload, q: TicketQueryDto, projectSlug?: string) {
     const slug = projectSlug ?? q.project;
-    if (!slug && !q.assignee) throw new BadRequestException('Isi project atau assignee');
     const project = slug ? await this.projects.findAccessible(user, slug) : null;
 
     const and: Prisma.TicketWhereInput[] = [
@@ -391,9 +392,18 @@ export class TicketsService {
     const t = await this.findTicket(user, key);
     const a = await this.prisma.attachment.create({
       data: { ticket_id: t.id, name: dto.name, size: dto.size, kind: dto.kind ?? kindOf(dto.name), url: dto.url, uploader_id: user.userId },
-      include: { uploader: { select: { username: true } } },
+      select: attachmentSelect,
     });
     return toAttachment(a);
+  }
+
+  async uploadAttachment(user: JwtPayload, key: string, file: UploadedDiskFile | undefined) {
+    // Bila tiket tidak ada / tidak boleh diakses, file yang telanjur tersimpan dibuang lagi.
+    const t = await this.findTicket(user, key).catch(async (e) => {
+      await this.files.discard(file);
+      throw e;
+    });
+    return this.files.attach(user, file, { ticket_id: t.id }, { kind: 'ticket', projectSlug: t.project.slug, ticketKey: t.key });
   }
 
   async removeAttachment(user: JwtPayload, key: string, id: number) {
@@ -402,6 +412,7 @@ export class TicketsService {
     if (!a) throw new NotFoundException('Lampiran tidak ditemukan');
     if (a.uploader_id !== user.userId && !isManager(user)) throw new ForbiddenException('Hanya pengunggah atau Admin yang bisa menghapus lampiran');
     await this.prisma.attachment.delete({ where: { id } });
+    await this.files.removeStored(a);
     return { deleted: true };
   }
 

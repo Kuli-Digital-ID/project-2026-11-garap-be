@@ -1,12 +1,13 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@common/prisma/prisma.service';
+import { PasswordUtil } from '@common/utils/password.util';
 import { agentInclude, divisionInclude, memberInclude, toAgent, toDivision, toMember } from '@common/serializers';
 import { JwtPayload } from '@modules/auth/core/interfaces/jwt-payload.interface';
 import { AuditService } from '@modules/activity/audit.service';
 import { AiProvidersService } from '@modules/ai/ai-providers.service';
 import {
-  CreateAgentDto, CreateDivisionDto, CreateMemberDto, MemberQueryDto, UpdateAgentDto, UpdateDivisionDto, UpdateMemberDto, UpdateMyProfileDto,
+  CreateAgentDto, CreateDivisionDto, CreateMemberDto, MemberQueryDto, ResetPasswordDto, UpdateAgentDto, UpdateDivisionDto, UpdateMemberDto, UpdateMyProfileDto,
 } from './core/dto/organization.dto';
 
 const initialsOf = (name: string) =>
@@ -128,13 +129,20 @@ export class OrganizationService {
     }
   }
 
+  /**
+   * Owner/Admin mendaftarkan akun. Bila password tidak diisi, dibuatkan password sementara yang
+   * hanya tampil sekali di respons ini; pemilik akun wajib menggantinya saat pertama masuk.
+   */
   async createMember(actor: JwtPayload, dto: CreateMemberDto) {
     this.guardOwner(actor, dto.access);
     const [first, ...rest] = dto.fullName.trim().split(/\s+/);
+    const temporaryPassword = dto.password ? undefined : PasswordUtil.temporary();
     const row = await this.prisma.user.create({
       data: {
         username: dto.username,
         email: dto.email.toLowerCase(),
+        password: await PasswordUtil.hash(dto.password ?? temporaryPassword!),
+        must_change_password: true,
         first_name: first,
         last_name: rest.join(' '),
         display_name: dto.name ?? first,
@@ -149,7 +157,28 @@ export class OrganizationService {
       include: memberInclude,
     });
     await this.audit.log(actor.userId, 'mendaftarkan anggota', `${dto.fullName} (${dto.email})`, 'akses');
-    return toMember(row);
+    return { ...toMember(row), temporaryPassword };
+  }
+
+  /** Reset oleh Owner/Admin: password sementara baru, semua sesi akun itu berakhir, kunci login dibuka. */
+  async resetPassword(actor: JwtPayload, username: string, dto: ResetPasswordDto) {
+    const current = await this.prisma.user.findFirst({ where: { username, kind: 'human', deleted_at: null }, include: memberInclude });
+    if (!current) throw new NotFoundException('Anggota tidak ditemukan');
+    if (current.id === actor.userId) throw new BadRequestException('Untuk akun sendiri gunakan menu ganti password');
+    if (current.position.name === 'Owner') this.guardOwner(actor, 'Owner');
+    const temporaryPassword = dto.password ? undefined : PasswordUtil.temporary();
+    await this.prisma.user.update({
+      where: { id: current.id },
+      data: {
+        password: await PasswordUtil.hash(dto.password ?? temporaryPassword!),
+        must_change_password: true,
+        token_version: { increment: 1 },
+        failed_logins: 0,
+        locked_until: null,
+      },
+    });
+    await this.audit.log(actor.userId, 'mereset password', `${current.display_name} (${current.email})`, 'keamanan');
+    return { id: current.username, temporaryPassword, mustChangePassword: true };
   }
 
   async updateMember(actor: JwtPayload, username: string, dto: UpdateMemberDto) {
@@ -175,8 +204,6 @@ export class OrganizationService {
         is_active: dto.isActive,
         division_id: await this.divisionId(dto.division),
         position_id: dto.access ? await this.positionId(dto.access) : undefined,
-        // Email berubah → ikatan ke akun Keycloak lama dilepas.
-        ...(dto.email && dto.email.toLowerCase() !== current.email ? { sso_subject: null } : {}),
       },
       include: memberInclude,
     });
@@ -200,7 +227,7 @@ export class OrganizationService {
     if (current.id === actor.userId) throw new BadRequestException('Anda tidak bisa menghapus akun sendiri');
     if (current.position.name === 'Owner') this.guardOwner(actor, 'Owner');
     // Soft delete: riwayat tiket & komentar tetap utuh.
-    await this.prisma.user.update({ where: { id: current.id }, data: { is_active: false, deleted_at: new Date(), sso_subject: null } });
+    await this.prisma.user.update({ where: { id: current.id }, data: { is_active: false, deleted_at: new Date(), token_version: { increment: 1 } } });
     await this.prisma.projectMember.deleteMany({ where: { user_id: current.id } });
     await this.audit.log(actor.userId, 'menghapus anggota', current.display_name, 'akses');
     return { deleted: true };

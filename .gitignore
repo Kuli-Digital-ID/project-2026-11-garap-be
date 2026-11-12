@@ -16,3 +16,6 @@ coverage/
 .idea/
 .vscode/*
 !.vscode/settings.json
+
+# lampiran yang diunggah
+/uploads/

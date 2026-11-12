@@ -6,6 +6,7 @@ import { ConfigModule } from '@nestjs/config';
 import appConfig from './config/app.config';
 import jwtConfig from './config/jwt.config';
 import authConfig from './config/auth.config';
+import storageConfig from './config/storage.config';
 import { Module } from '@nestjs/common';
 
 // Common modules
@@ -35,7 +36,7 @@ import { WorkspaceModule } from './modules/workspace/workspace.module';
     ConfigModule.forRoot({
       isGlobal: true,
       validationSchema,
-      load: [appConfig, databaseConfig, jwtConfig, authConfig, swaggerConfig],
+      load: [appConfig, databaseConfig, jwtConfig, authConfig, storageConfig, swaggerConfig],
     }),
 
     // Common modules

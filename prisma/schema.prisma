@@ -10,14 +10,21 @@ datasource db {
 // RBAC & akun
 // ============================================
 
-/// Anggota tim: manusia (login lewat SSO) atau agent AI.
+/// Anggota tim: manusia (login email + password) atau agent AI.
 model User {
   id            Int       @id @default(autoincrement())
   /// Handle unik, mis. "bhagas". Dipakai FE sebagai id anggota & untuk @mention.
   username      String    @unique
   email         String    @unique
-  /// Kosong untuk akun SSO & agent. Hanya dipakai bila AUTH_PASSWORD_LOGIN=true.
+  /// Hash bcrypt. Kosong untuk agent (agent tidak login lewat halaman masuk).
   password      String?
+  /// Password awal/hasil reset dari Owner/Admin: wajib diganti sebelum memakai aplikasi.
+  must_change_password Boolean @default(false)
+  /// Naik tiap password diganti/di-reset; token lama otomatis tidak berlaku.
+  token_version Int       @default(0)
+  failed_logins Int       @default(0)
+  /// Akun dikunci sementara setelah beberapa kali salah password.
+  locked_until  DateTime?
   first_name    String
   last_name     String    @default("")
   /// Nama panggilan yang tampil di UI, mis. "Bhagas".
@@ -31,7 +38,6 @@ model User {
   status        String    @default("offline") // online | fokus | offline | bekerja | menunggu | idle
   floor         String?
   division_id   Int?
-  sso_subject   String?   @unique
   last_login_at DateTime?
   joined_at     DateTime  @default(now())
   is_active     Boolean   @default(true)
@@ -443,7 +449,13 @@ model Attachment {
   /// Ukuran dalam byte.
   size        Int      @default(0)
   kind        String   @default("lainnya") // gambar | pdf | dokumen | video | lainnya
+  /// Tautan luar (Drive, Figma, ...). Kosong untuk file yang diunggah ke server.
   url         String?
+  /// Kunci file di penyimpanan. Kosong untuk tautan luar.
+  storage_key String?
+  /// Tempat file disimpan: local (folder UPLOAD_DIR) | s3 (Cloudflare R2 / S3).
+  storage     String?
+  mime        String?
   uploader_id Int
   created_at  DateTime @default(now())
 

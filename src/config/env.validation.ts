@@ -17,26 +17,35 @@ export const validationSchema = Joi.object({
   JWT_REFRESH_SECRET: Joi.string().required(),
   JWT_REFRESH_EXPIRATION: Joi.string().default('30d'),
 
-  // CORS
-  CORS_ORIGIN: Joi.string().default('*'),
+  // CORS: satu atau beberapa alamat FE dipisah koma
+  CORS_ORIGIN: Joi.string().default('http://localhost:3000'),
 
   // API
   API_PREFIX: Joi.string().default('api'),
 
 
-  // Frontend (tujuan redirect setelah login SSO)
+  // Alamat FE (tujuan redirect setelah menghubungkan akun sosmed)
   FRONTEND_URL: Joi.string().uri().default('http://localhost:3000'),
 
-  // Login
-  /** Login email + password hanya untuk pengembangan lokal. Produksi wajib SSO. */
-  AUTH_PASSWORD_LOGIN: Joi.boolean().default(false),
+  // Login email + password
+  AUTH_MAX_FAILED_LOGINS: Joi.number().integer().min(1).default(5),
+  AUTH_LOCK_MINUTES: Joi.number().integer().min(1).default(15),
+  /** lax untuk FE & API satu situs; none bila beda situs (wajib HTTPS). */
+  COOKIE_SAMESITE: Joi.string().valid('lax', 'strict', 'none').default('lax'),
+  COOKIE_DOMAIN: Joi.string().allow('').optional(),
 
-  // SSO Keycloak (OIDC). Kosongkan bila belum ada Keycloak; tombol SSO akan nonaktif.
-  KEYCLOAK_ISSUER: Joi.string().uri().allow('').optional(),
-  KEYCLOAK_CLIENT_ID: Joi.string().allow('').optional(),
-  KEYCLOAK_CLIENT_SECRET: Joi.string().allow('').optional(),
-  /** URL callback BE yang didaftarkan di client Keycloak. */
-  KEYCLOAK_REDIRECT_URI: Joi.string().uri().allow('').optional(),
+  // Lampiran yang diunggah
+  UPLOAD_DIR: Joi.string().default('./uploads'),
+  UPLOAD_MAX_MB: Joi.number().min(1).max(1024).default(25),
+  STORAGE_DRIVER: Joi.string().valid('local', 's3').default('local'),
+  // Wajib bila STORAGE_DRIVER=s3 (Cloudflare R2: https://<account-id>.r2.cloudflarestorage.com, region auto)
+  S3_ENDPOINT: Joi.string().uri().when('STORAGE_DRIVER', { is: 's3', then: Joi.required(), otherwise: Joi.allow('').optional() }),
+  S3_BUCKET: Joi.string().when('STORAGE_DRIVER', { is: 's3', then: Joi.required(), otherwise: Joi.allow('').optional() }),
+  S3_ACCESS_KEY_ID: Joi.string().when('STORAGE_DRIVER', { is: 's3', then: Joi.required(), otherwise: Joi.allow('').optional() }),
+  S3_SECRET_ACCESS_KEY: Joi.string().when('STORAGE_DRIVER', { is: 's3', then: Joi.required(), otherwise: Joi.allow('').optional() }),
+  S3_REGION: Joi.string().default('auto'),
+  S3_PREFIX: Joi.string().allow('').default(''),
+  S3_FORCE_PATH_STYLE: Joi.boolean().default(true),
 
   // Kunci enkripsi API key penyedia AI (Gemini, Grok, OpenAI, ...). Jangan diganti setelah ada key tersimpan.
   AI_KEY_SECRET: Joi.string().min(16).required(),

@@ -1,5 +1,7 @@
-import { Body, Controller, Get, Param, Patch, Post, Query } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, Param, Patch, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { UploadedDiskFile } from '@modules/files/files.service';
 import { GetUser } from '@common/decorators/get-user.decorator';
 import { Permissions } from '@common/decorators/permissions.decorator';
 import { PERMISSIONS } from '@common/constants/permissions.constant';
@@ -38,6 +40,16 @@ export class RequestsController {
   @Permissions(R.ADD)
   update(@GetUser() u: JwtPayload, @Param('code') code: string, @Body() dto: UpdateRequestDto) {
     return this.requests.update(u, code, dto);
+  }
+
+  @Post(':code/attachments/upload')
+  @Permissions(R.ADD)
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ schema: { type: 'object', required: ['file'], properties: { file: { type: 'string', format: 'binary' } } } })
+  @ApiOperation({ summary: 'Unggah file lampiran permintaan (multipart, field "file")' })
+  uploadAttachment(@GetUser() u: JwtPayload, @Param('code') code: string, @UploadedFile() file: UploadedDiskFile) {
+    return this.requests.uploadAttachment(u, code, file);
   }
 
   @Post(':code/review')

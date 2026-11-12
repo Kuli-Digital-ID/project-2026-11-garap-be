@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Ip, Param, ParseIntPipe, Patch, Post, Put, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, HttpStatus, Ip, Param, ParseIntPipe, Patch, Post, Put, Query } from '@nestjs/common';
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { GetUser } from '@common/decorators/get-user.decorator';
 import { Permissions } from '@common/decorators/permissions.decorator';
@@ -8,7 +8,7 @@ import { OrganizationService } from '../../organization.service';
 import { EmployeesService } from '../../employees.service';
 import { UpdateEmployeeDto, UpdateMyEmployeeDto } from '../../core/dto/employee.dto';
 import {
-  CreateAgentDto, CreateDivisionDto, CreateMemberDto, MemberQueryDto, SetPositionPermissionsDto, UpdateAgentDto, UpdateDivisionDto, UpdateMemberDto,
+  CreateAgentDto, CreateDivisionDto, CreateMemberDto, MemberQueryDto, ResetPasswordDto, SetPositionPermissionsDto, UpdateAgentDto, UpdateDivisionDto, UpdateMemberDto,
   UpdateMyProfileDto,
 } from '../../core/dto/organization.dto';
 
@@ -95,7 +95,7 @@ export class MembersController {
 
   @Post()
   @Permissions(PERMISSIONS.USER.ADD)
-  @ApiOperation({ summary: 'Daftarkan akun anggota (login lewat SSO dengan email ini)' })
+  @ApiOperation({ summary: 'Daftarkan akun anggota. Tanpa password → respons memuat temporaryPassword (tampil sekali)' })
   create(@GetUser() u: JwtPayload, @Body() dto: CreateMemberDto) {
     return this.org.createMember(u, dto);
   }
@@ -104,6 +104,14 @@ export class MembersController {
   @Permissions(PERMISSIONS.USER.UPDATE)
   update(@GetUser() u: JwtPayload, @Param('username') username: string, @Body() dto: UpdateMemberDto) {
     return this.org.updateMember(u, username, dto);
+  }
+
+  @Post(':username/reset-password')
+  @HttpCode(HttpStatus.OK)
+  @Permissions(PERMISSIONS.USER.UPDATE)
+  @ApiOperation({ summary: 'Reset password anggota: password sementara baru, sesi lama berakhir, kunci login dibuka' })
+  resetPassword(@GetUser() u: JwtPayload, @Param('username') username: string, @Body() dto: ResetPasswordDto) {
+    return this.org.resetPassword(u, username, dto);
   }
 
   @Delete(':username')

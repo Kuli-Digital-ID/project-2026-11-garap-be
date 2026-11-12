@@ -163,12 +163,15 @@ export const toEpic = (e: EpicRow) => ({
 
 // ---------- Tiket ----------
 
-const attachmentSelect = {
+export const attachmentSelect = {
   id: true,
   name: true,
   size: true,
   kind: true,
   url: true,
+  storage_key: true,
+  storage: true,
+  mime: true,
   created_at: true,
   uploader: userRef,
 } satisfies Prisma.AttachmentSelect;
@@ -178,13 +181,19 @@ type AttachmentRow = Prisma.AttachmentGetPayload<{ select: typeof attachmentSele
 const fmtSize = (n: number) =>
   n >= 1024 ** 2 ? `${(n / 1024 ** 2).toFixed(1).replace('.', ',')} MB` : `${Math.max(1, Math.round(n / 1024))} KB`;
 
+/** Alamat publik API; dibaca saat dipakai karena .env baru dimuat ketika aplikasi mulai. */
+const apiBase = () => (process.env.API_PUBLIC_URL || `http://localhost:${process.env.PORT || 4000}`).replace(/\/$/, '');
+
 export const toAttachment = (a: AttachmentRow) => ({
   id: a.id,
   name: a.name,
   size: fmtSize(a.size),
   bytes: a.size,
   kind: a.kind,
-  url: a.url ?? undefined,
+  /** Tautan luar, atau alamat unduh di API untuk file yang diunggah (butuh sesi login). */
+  url: a.url ?? (a.storage_key ? `${apiBase()}/${process.env.API_PREFIX || 'api'}/v1/attachments/${a.id}/file` : undefined),
+  uploaded: !!a.storage_key,
+  mime: a.mime ?? undefined,
   by: a.uploader.username,
   time: iso(a.created_at),
 });

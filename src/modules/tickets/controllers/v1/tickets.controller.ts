@@ -1,5 +1,7 @@
-import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Put, Query } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Delete, Get, Param, ParseIntPipe, Patch, Post, Put, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
+import { UploadedDiskFile } from '@modules/files/files.service';
 import { GetUser } from '@common/decorators/get-user.decorator';
 import { Permissions } from '@common/decorators/permissions.decorator';
 import { PERMISSIONS } from '@common/constants/permissions.constant';
@@ -115,9 +117,19 @@ export class TicketsController {
 
   @Post('tickets/:key/attachments')
   @Permissions(T.UPDATE)
-  @ApiOperation({ summary: 'Catat lampiran (metadata + URL file)' })
+  @ApiOperation({ summary: 'Lampirkan tautan luar (Drive, Figma, ...): metadata + URL' })
   addAttachment(@GetUser() u: JwtPayload, @Param('key') key: string, @Body() dto: AttachmentDto) {
     return this.tickets.addAttachment(u, key, dto);
+  }
+
+  @Post('tickets/:key/attachments/upload')
+  @Permissions(T.UPDATE)
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ schema: { type: 'object', required: ['file'], properties: { file: { type: 'string', format: 'binary' } } } })
+  @ApiOperation({ summary: 'Unggah file lampiran (multipart, field "file"; batas UPLOAD_MAX_MB)' })
+  uploadAttachment(@GetUser() u: JwtPayload, @Param('key') key: string, @UploadedFile() file: UploadedDiskFile) {
+    return this.tickets.uploadAttachment(u, key, file);
   }
 
   @Delete('tickets/:key/attachments/:id')

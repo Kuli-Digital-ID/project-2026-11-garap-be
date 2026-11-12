@@ -7,6 +7,7 @@ import { requestInclude, toRequest } from '@common/serializers';
 import { JwtPayload } from '@modules/auth/core/interfaces/jwt-payload.interface';
 import { NotificationsService } from '@modules/activity/notifications.service';
 import { TicketsService } from '@modules/tickets/tickets.service';
+import { FilesService, UploadedDiskFile } from '@modules/files/files.service';
 import { AcceptRequestDto, CreateRequestDto, RejectRequestDto, RequestQueryDto, UpdateRequestDto } from './core/dto/request.dto';
 
 const day = (s: string) => new Date(`${s.slice(0, 10)}T00:00:00Z`);
@@ -18,6 +19,7 @@ export class RequestsService {
     private prisma: PrismaService,
     private tickets: TicketsService,
     private notifications: NotificationsService,
+    private files: FilesService,
   ) {}
 
   private async myDivisionId(user: JwtPayload) {
@@ -54,6 +56,19 @@ export class RequestsService {
 
   async get(code: string) {
     return this.load((await this.find(code)).id);
+  }
+
+  /** Pengaju (atau Owner/Admin) menambah file ke permintaannya. Bila sudah jadi tiket, file ikut tampil di tiket itu. */
+  async uploadAttachment(user: JwtPayload, code: string, file: UploadedDiskFile | undefined) {
+    try {
+      const r = await this.find(code);
+      if (r.requester_id !== user.userId && !isManager(user)) throw new ForbiddenException('Hanya pengaju yang bisa menambah lampiran');
+      if (r.status === 'ditolak' || r.status === 'selesai') throw new BadRequestException('Permintaan ini sudah ditutup');
+      return await this.files.attach(user, file, { request_id: r.id, ...(r.ticket_id ? { ticket_id: r.ticket_id } : {}) }, { kind: 'request', code: r.code });
+    } catch (e) {
+      await this.files.discard(file);
+      throw e;
+    }
   }
 
   async create(user: JwtPayload, dto: CreateRequestDto) {

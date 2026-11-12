@@ -10,53 +10,132 @@
 Database memakai Postgres yang sudah ada (container `postgis-kuli`, port 5432, user `docker`), database `garap_db`.
 
 ```bash
-cp .env.example .env          # lalu isi DATABASE_URL & JWT_SECRET
+cp .env.example .env
 npm install
-npx prisma migrate dev        # buat/terapkan tabel
-npm run prisma:seed           # isi data demo (sama dengan demo FE)
-npm run start:dev             # http://localhost:4000
+npx prisma migrate deploy
+npm run prisma:seed
+npm run start:dev
 ```
 
-- Swagger: http://localhost:4000/api/docs
-- Health: http://localhost:4000/api/v1/health
-- FE Garap berjalan di http://localhost:3000 (`CORS_ORIGIN` & `FRONTEND_URL`).
+Isi `DATABASE_URL`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, dan `AI_KEY_SECRET` di `.env` sebelum menjalankan migrasi.
 
-`npm run prisma:seed` **mengosongkan semua tabel** lalu mengisi ulang data demo.
+- API: http://localhost:4000 · Swagger: http://localhost:4000/api/docs · Health: http://localhost:4000/api/v1/health
+- `npm run prisma:seed` **mengosongkan semua tabel** lalu mengisi data demo (sama dengan demo FE).
+  Semua akun manusia di data demo memakai password `password123` (ubah lewat `SEED_DEV_PASSWORD`); email Owner dicetak di akhir seed.
+- Untuk database sungguhan (tanpa data demo) pakai `prisma:init`: membuat posisi, izin, dan akun Owner pertama tanpa menghapus apa pun.
 
-## Login
+```bash
+OWNER_EMAIL=nama@kantor.id OWNER_NAME="Nama Lengkap" OWNER_PASSWORD='rahasia123' npm run prisma:init
+```
 
-Garap aplikasi internal: tidak ada pendaftaran mandiri. Owner/Admin mendaftarkan akun (`POST /api/v1/members`)
-dengan email kantor; orang tersebut lalu masuk lewat SSO Keycloak dengan email yang sama.
+## Login & hak akses (RBAC)
+
+Garap aplikasi internal: tidak ada pendaftaran mandiri. Owner/Admin mendaftarkan akun, lalu orang tersebut masuk dengan email + password.
 
 | Alur | Endpoint |
 | --- | --- |
-| Mulai login (FE mengarahkan tombol "Masuk dengan SSO" ke sini) | `GET /api/v1/auth/sso/login?redirect=/proyek` |
-| Callback Keycloak (daftarkan sebagai *Valid Redirect URI*) | `GET /api/v1/auth/sso/callback` |
-| Akun yang sedang masuk | `GET /api/v1/auth/me` |
-| Keluar (FE lalu membuka `logoutUrl`) | `POST /api/v1/auth/logout` |
-| Metode login yang aktif | `GET /api/v1/auth/config` |
+| Masuk | `POST /api/v1/auth/login` `{ email, password }` → `{ accessToken, expiresAt, user }` + cookie `Authentication` |
+| Akun yang sedang masuk + izinnya | `GET /api/v1/auth/me` |
+| Ganti password sendiri | `POST /api/v1/auth/change-password` `{ currentPassword, newPassword }` |
+| Keluar | `POST /api/v1/auth/logout` |
+| Daftarkan akun (Owner/Admin) | `POST /api/v1/members` — tanpa `password` → respons memuat `temporaryPassword` (tampil sekali) |
+| Reset password anggota (Owner/Admin) | `POST /api/v1/members/:username/reset-password` |
 
-Gagal login → FE diarahkan ke `/masuk?error=tidak-terdaftar | nonaktif | sso-gagal | sso-belum-diatur`.
+- **Password sementara** (akun baru / hasil reset) wajib diganti: `user.mustChangePassword = true`, dan semua endpoint selain
+  `auth/me`, `auth/change-password`, `auth/logout` menjawab `403` dengan `errors.code = "PASSWORD_CHANGE_REQUIRED"`.
+- **Salah password 5 kali** → akun terkunci 15 menit (`429`, `errors.code = "ACCOUNT_LOCKED"`). Reset oleh Owner/Admin membuka kunci.
+- **Ganti/reset password, nonaktifkan, atau hapus akun** langsung mengakhiri semua sesi lama akun itu.
+- Aturan password: minimal 8 karakter, memuat huruf dan angka.
 
-Client Keycloak: *confidential*, Standard flow (Authorization Code + PKCE S256), scope `openid email profile`,
-Valid post logout redirect URI `http://localhost:3000/masuk`.
-
-Selama Keycloak belum siap, set `AUTH_PASSWORD_LOGIN=true` dan login dengan `POST /api/v1/auth/login`
-(email anggota dari seed, password `password123`). **Matikan di produksi.**
-
-## Hak akses
-
-Posisi: **Owner** (semua izin), **Admin**, **Anggota**, **Tamu** (hanya proyek tempat ia diundang), **Agent**.
+Posisi: **Owner** (semua izin), **Admin**, **Anggota**, **Tamu** (hanya proyek tempat ia diundang), **Agent** (tidak login lewat halaman masuk).
 Izin bawaan ada di `src/common/constants/permissions.constant.ts` dan bisa diubah lewat `PUT /api/v1/positions/:id/permissions`.
+Peran dan izin dibaca ulang dari database di setiap request, jadi perubahan hak akses langsung berlaku tanpa login ulang.
+
+## Integrasi dengan FE
+
+**Sesi.** Dua cara, pilih salah satu:
+
+1. Cookie httpOnly `Authentication` (disarankan): panggil API dengan `fetch(url, { credentials: 'include' })`.
+   Alamat FE harus terdaftar di `CORS_ORIGIN`. Bila FE dan API beda situs (mis. `*.workers.dev` + domain lain), set `COOKIE_SAMESITE=none` dan pakai HTTPS.
+2. Header `Authorization: Bearer <accessToken>` dari respons login.
+
+**Bentuk respons.** Semua endpoint JSON memakai amplop yang sama:
+
+```jsonc
+{ "statusCode": 200, "message": "Data retrieved successfully", "data": { /* isi */ } }
+// galat:
+{ "statusCode": 403, "message": "…", "data": null, "errors": { "code": "PASSWORD_CHANGE_REQUIRED" } }
+```
+
+`message` berupa array string bila validasi input gagal (`400`). `401` = belum masuk / sesi berakhir → arahkan ke `/masuk`.
+
+**Bentuk data** mengikuti `src/lib/types.ts` di FE: id anggota = `username`, proyek = `slug`, tiket = `key`, divisi = `slug`, permintaan = `REQ-n`.
+Tambahan dari BE: `ticket.sprintId`, `commentCount`, `attachmentCount`, `subtaskCount`, `project.ticketCount`, `attachment.id/url/uploaded`.
+Daftar tiket (papan, backlog) tidak memuat `comments`, `attachments`, `links`; ambil dari detail tiket.
+
+**Aksi store FE → endpoint**
+
+| FE (`src/lib/store.tsx`) | Endpoint |
+| --- | --- |
+| data awal: `members`, `agents`, `divisions`, `projects` | `GET /members` · `GET /agents` · `GET /divisions` · `GET /projects` |
+| papan / backlog proyek | `GET /projects/:slug/tickets?sprint=active\|backlog` |
+| Tugas saya, Semua tiket | `GET /tickets?assignee=me` · `GET /tickets` |
+| `createTicket` · `updateTicket` · `deleteTicket` | `POST /projects/:slug/tickets` · `PATCH /tickets/:key` · `DELETE /tickets/:key` |
+| `moveTicket` (geser kartu) | `POST /tickets/:key/move` `{ status, beforeKey? }` |
+| `bulkUpdate` · `bulkDelete` | `POST /tickets/bulk` · `POST /tickets/bulk-delete` |
+| `addComment` | `POST /tickets/:key/comments` |
+| `addCheck` · `toggleCheck` | `PUT /tickets/:key/checklist` (kirim seluruh daftar) |
+| lampiran tiket | `POST /tickets/:key/attachments/upload` (multipart `file`) · `DELETE /tickets/:key/attachments/:id` |
+| `createProject` · `updateProject` | `POST /projects` · `PATCH /projects/:slug` · `PUT /projects/:slug/members` · `PUT /projects/:slug/workflow` |
+| `completeSprint` | `POST /projects/:slug/sprints/:id/complete` |
+| `addEpic` | `POST /projects/:slug/epics` |
+| `submitRequest` · `setRequestStatus` · `acceptRequest` · `rejectRequest` | `POST /requests` · `POST /requests/:code/review` · `…/accept` · `…/reject` |
+| `createDoc` · `updateDoc` | `POST /docs` · `PATCH /docs/:slug` · `POST /docs/:slug/review` |
+| `decideApproval` | `POST /approvals/:id/decide` |
+| `markRead` · `markAllRead` | `POST /notifications/read` |
+| `inviteMember` · `updateMember` · `updateEmployee` | `POST /members` · `PATCH /members/:username` · `PATCH /members/:username/employee` |
+| `updateWorkspace` | `PATCH /workspace` |
+
+Belum ada di BE: Percakapan (`sendMessage`, `openDm`), Office, Pemakaian AI, Penagihan.
+
+## Lampiran
+
+`POST /tickets/:key/attachments/upload` dan `POST /requests/:code/attachments/upload` menerima `multipart/form-data` dengan field `file`
+(batas `UPLOAD_MAX_MB`, bawaan 25 MB). Tautan luar (Drive, Figma) tetap lewat `POST /tickets/:key/attachments` dengan `{ name, size, url }`.
+
+**Penyimpanan** dipilih lewat `STORAGE_DRIVER`:
+
+- `local` — folder `UPLOAD_DIR` di server API (bawaan `./uploads`, tidak ikut git).
+- `s3` — bucket Cloudflare R2 (atau S3/MinIO), isi `S3_ENDPOINT`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`.
+  Saat API mulai, log menampilkan `Lampiran disimpan di bucket "…"` bila bucket bisa diakses, atau galat bila kredensial salah.
+
+Tiap lampiran mencatat tempat penyimpanannya, jadi file lama tetap bisa dibuka setelah `STORAGE_DRIVER` diganti.
+
+**Susunan folder** (sama untuk lokal dan bucket):
+
+```
+proyek/{slug-proyek}/{KUNCI-TIKET}/gambar/…     png, jpg, gif, webp, svg, heic
+proyek/{slug-proyek}/{KUNCI-TIKET}/dokumen/…    pdf, docx, xlsx, pptx, txt, md, csv
+proyek/{slug-proyek}/{KUNCI-TIKET}/video/…      mp4, mov, webm
+proyek/{slug-proyek}/{KUNCI-TIKET}/lainnya/…    zip, fig, dan lainnya
+permintaan/{REQ-n}/{gambar|dokumen|video|lainnya}/…
+```
+
+Nama file: `{tanggal}-{jam}-{id acak}-{nama-asli-yang-dirapikan}`, mis.
+`proyek/pinarak/PNR-142/dokumen/20261113-034512-3f9a1c2e-brd-final-v2.pdf`. Nama asli tetap tersimpan di database dan dipakai saat diunduh.
+
+**Membuka file:** `attachment.url` → `GET /api/v1/attachments/:id/file`. File selalu lewat API (butuh sesi login, Tamu hanya proyeknya sendiri),
+jadi bucket boleh tetap privat. Gambar, PDF, dan video tampil langsung; tipe lain selalu diunduh.
 
 ## Modul API
 
 | Modul | Isi |
 | --- | --- |
-| `members`, `agents`, `divisions`, `positions` | Akun, agent AI (pilih penyedia + model), divisi, izin |
+| `auth` | Masuk email + password, sesi, ganti password |
+| `members`, `agents`, `divisions`, `positions` | Akun (password awal & reset), agent AI (pilih penyedia + model), divisi, izin |
 | `ai-providers` | API key Anthropic, Gemini, Grok, OpenAI, OpenRouter, atau server sendiri (Ollama/vLLM). Key diuji ke penyedia lalu disimpan terenkripsi AES-256-GCM (`AI_KEY_SECRET`); FE hanya menerima 4 karakter terakhir |
 | `projects` | Proyek dari template (software/kanban/kreatif/konten), anggota, alur kerja + WIP, sprint (selesaikan + carry-over), epic |
-| `tickets` | Papan & backlog, geser kartu (`/move`), bulk, komentar (@mention), checklist, relasi, lampiran, pemantau, sub-tugas |
+| `tickets`, `attachments` | Papan & backlog, geser kartu (`/move`), bulk, komentar (@mention), checklist, relasi, lampiran (unggah file / tautan), pemantau, sub-tugas |
 | `requests` | Permintaan lintas divisi: kirim → tinjau → terima (jadi tiket) / tolak; tiket selesai → permintaan selesai |
 | `docs` | BRD, SRS, arsitektur, notulen; Draf → Direview → Disetujui |
 | `content`, `social` | Kalender konten, konten rutin (tiket dibuat otomatis H-n), publikasi per akun (draf → persetujuan → terjadwal → tayang), agent menulis caption/naskah dengan model AI-nya, statistik & laporan performa, akun YouTube/Instagram/Facebook/TikTok/LinkedIn/X (OAuth atau manual) |
@@ -87,5 +166,5 @@ src/
   common/            # guard, decorator, serializers (DB → JSON FE), konstanta
   config/
   modules/
-    auth/ activity/ organization/ projects/ tickets/ requests/ docs/ health/
+    auth/ activity/ organization/ projects/ tickets/ files/ requests/ docs/ content/ ai/ workspace/ health/
 ```

@@ -21,9 +21,12 @@ async function bootstrap() {
   const port = configService.get<number>('app.port');
 
   // Enable CORS
+  // CORS_ORIGIN boleh berisi beberapa alamat FE dipisah koma. "*" = pantulkan origin apa pun (hanya untuk pengembangan).
+  const origins = (corsOrigin ?? '').split(',').map((o) => o.trim().replace(/\/$/, '')).filter(Boolean);
   app.enableCors({
-    origin: corsOrigin,
+    origin: origins.includes('*') || origins.length === 0 ? true : origins,
     credentials: true,
+    exposedHeaders: ['Content-Disposition'],
   });
 
   app.use(cookieParser());
@@ -58,12 +61,13 @@ async function bootstrap() {
       .setTitle('Garap API')
       .setDescription(
         'Backend Garap — manajemen proyek untuk tim manusia & agent AI Kuli Digital. ' +
-          'Login lewat SSO Keycloak (GET /api/v1/auth/sso/login); sesi disimpan di cookie httpOnly "Authentication".',
+          'Login: POST /api/v1/auth/login (email + password). Sesi disimpan di cookie httpOnly "Authentication"; ' +
+          'token yang sama bisa dikirim sebagai Authorization: Bearer. Hak akses mengikuti posisi (Owner, Admin, Anggota, Tamu) dan izinnya.',
       )
       .setVersion('1.0')
       .addCookieAuth('Authentication')
       .addBearerAuth()
-      .addTag('Authentication', 'Login SSO Keycloak, sesi, profil saya')
+      .addTag('Authentication', 'Masuk, keluar, ganti password, akun saya')
       .addTag('Members', 'Akun anggota (didaftarkan Owner/Admin)')
       .addTag('Agents', 'Agent AI, profil, dan riwayat run')
       .addTag('AI Providers', 'API key penyedia model AI (terenkripsi)')

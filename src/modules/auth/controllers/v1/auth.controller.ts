@@ -1,15 +1,17 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Ip, Post, Query, Req, Res } from '@nestjs/common';
-import { ApiOperation, ApiQuery, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, HttpCode, HttpStatus, Ip, Post, Req, Res } from '@nestjs/common';
+import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CookieOptions, Request, Response } from 'express';
-import ms, { StringValue } from 'ms';
 import { ConfigService } from '@nestjs/config';
 import { Public } from '@common/decorators/public.decorator';
 import { GetUser } from '@common/decorators/get-user.decorator';
+import { AllowPendingPassword } from '@common/decorators/password-change.decorator';
 import { ApiSuccessResponse } from '@common/decorators/api-response.decorator';
-import { AuthService, SSO_COOKIE, SsoError } from '../../auth.service';
-import { LoginDto } from '../../core/dto/login.dto';
-import { AuthConfigDto, LogoutResponseDto, MeDto } from '../../core/dto/auth-response.dto';
+import { AuthService } from '../../auth.service';
+import { ChangePasswordDto, LoginDto } from '../../core/dto/login.dto';
+import { LogoutResponseDto, MeDto, SessionDto } from '../../core/dto/auth-response.dto';
 import { JwtPayload } from '../../core/interfaces/jwt-payload.interface';
+
+export const SESSION_COOKIE = 'Authentication';
 
 @ApiTags('Authentication')
 @Controller({ path: 'auth', version: '1' })
@@ -20,79 +22,59 @@ export class AuthController {
   ) {}
 
   private cookieBase(): CookieOptions {
-    return { httpOnly: true, secure: process.env.NODE_ENV === 'production', sameSite: 'lax', path: '/' };
+    const { sameSite, domain } = this.config.get<{ sameSite: 'lax' | 'strict' | 'none'; domain?: string }>('auth.cookie')!;
+    // SameSite=None hanya diterima browser bila Secure.
+    return { httpOnly: true, secure: process.env.NODE_ENV === 'production' || sameSite === 'none', sameSite, domain, path: '/' };
   }
 
   private setSession(res: Response, token: string) {
-    const maxAge = ms((this.config.get<string>('jwt.expiresIn') ?? '7d') as StringValue);
-    res.cookie('Authentication', token, { ...this.cookieBase(), maxAge });
-  }
-
-  @Public()
-  @Get('config')
-  @ApiOperation({ summary: 'Metode login yang tersedia (dipakai halaman /masuk)' })
-  @ApiSuccessResponse(AuthConfigDto)
-  getConfig() {
-    return this.auth.getConfig();
-  }
-
-  @Public()
-  @Get('sso/login')
-  @ApiOperation({ summary: 'Mulai login SSO: redirect ke halaman login Keycloak' })
-  @ApiQuery({ name: 'redirect', required: false, description: 'Path FE setelah berhasil masuk, mis. /proyek/pinarak' })
-  @ApiResponse({ status: 302 })
-  ssoLogin(@Query('redirect') redirect: string | undefined, @Res() res: Response) {
-    try {
-      const { url, cookie } = this.auth.startSso(redirect);
-      res.cookie(SSO_COOKIE, cookie, { ...this.cookieBase(), maxAge: 10 * 60 * 1000 });
-      return res.redirect(url);
-    } catch (e) {
-      const code = e instanceof SsoError ? e.code : 'sso-gagal';
-      return res.redirect(`${this.auth.frontendUrl}/masuk?error=${code}`);
-    }
-  }
-
-  @Public()
-  @Get('sso/callback')
-  @ApiOperation({ summary: 'Callback dari Keycloak (daftarkan URL ini sebagai Valid Redirect URI)' })
-  @ApiResponse({ status: 302 })
-  async ssoCallback(@Query('code') code: string, @Query('state') state: string, @Req() req: Request, @Res() res: Response, @Ip() ip: string) {
-    res.clearCookie(SSO_COOKIE, this.cookieBase());
-    try {
-      const result = await this.auth.finishSso({ code, state, cookie: req.cookies?.[SSO_COOKIE], ip });
-      this.setSession(res, result.token);
-      return res.redirect(`${this.auth.frontendUrl}${result.redirect}`);
-    } catch (e) {
-      const errCode = e instanceof SsoError ? e.code : 'sso-gagal';
-      return res.redirect(`${this.auth.frontendUrl}/masuk?error=${errCode}`);
-    }
+    res.cookie(SESSION_COOKIE, token, { ...this.cookieBase(), maxAge: this.auth.sessionMs });
   }
 
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Login email + password — hanya aktif bila AUTH_PASSWORD_LOGIN=true (pengembangan)' })
-  @ApiSuccessResponse(MeDto)
+  @ApiOperation({
+    summary: 'Masuk dengan email + password',
+    description:
+      'Sesi disimpan di cookie httpOnly "Authentication" (kirim request FE dengan credentials: "include"). ' +
+      'Token yang sama dikembalikan sebagai accessToken untuk dipakai sebagai Bearer. ' +
+      'Salah password berulang → 429 ACCOUNT_LOCKED. Bila user.mustChangePassword = true, arahkan ke ganti password.',
+  })
+  @ApiSuccessResponse(SessionDto)
   async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response, @Ip() ip: string) {
-    const { token, me } = await this.auth.passwordLogin(dto, ip);
-    this.setSession(res, token);
-    return me;
+    const session = await this.auth.login(dto, ip);
+    this.setSession(res, session.accessToken);
+    return session;
   }
 
   @Get('me')
-  @ApiOperation({ summary: 'Akun yang sedang masuk beserta izinnya' })
+  @AllowPendingPassword()
+  @ApiOperation({ summary: 'Akun yang sedang masuk beserta peran dan izinnya' })
   @ApiSuccessResponse(MeDto)
   me(@GetUser() user: JwtPayload) {
     return this.auth.me(user.userId);
   }
 
+  @Post('change-password')
+  @HttpCode(HttpStatus.OK)
+  @AllowPendingPassword()
+  @ApiOperation({ summary: 'Ganti password sendiri. Sesi di perangkat lain berakhir; perangkat ini mendapat token baru.' })
+  @ApiSuccessResponse(SessionDto)
+  async changePassword(@GetUser() user: JwtPayload, @Body() dto: ChangePasswordDto, @Res({ passthrough: true }) res: Response, @Ip() ip: string) {
+    const session = await this.auth.changePassword(user, dto, ip);
+    this.setSession(res, session.accessToken);
+    return session;
+  }
+
   @Public()
   @Post('logout')
   @HttpCode(HttpStatus.OK)
-  @ApiOperation({ summary: 'Keluar. FE lalu membuka logoutUrl untuk mengakhiri sesi Keycloak.' })
+  @ApiOperation({ summary: 'Keluar: menghapus cookie sesi' })
   @ApiSuccessResponse(LogoutResponseDto)
-  logout(@Res({ passthrough: true }) res: Response) {
-    res.clearCookie('Authentication', this.cookieBase());
-    return { logoutUrl: this.auth.logoutUrl() };
+  logout(@Req() req: Request, @Res({ passthrough: true }) res: Response) {
+    const bearer = req.headers.authorization?.startsWith('Bearer ') ? req.headers.authorization.slice(7) : undefined;
+    res.clearCookie(SESSION_COOKIE, this.cookieBase());
+    return this.auth.logout(req.cookies?.[SESSION_COOKIE] ?? bearer);
   }
 }

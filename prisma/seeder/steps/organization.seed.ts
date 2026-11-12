@@ -15,7 +15,7 @@ export const seedOrganization = async (prisma: PrismaClient, positions: Map<Posi
     divisions.set(d.id, row.id);
   }
 
-  // Password hanya untuk login lokal saat pengembangan (AUTH_PASSWORD_LOGIN=true).
+  // Semua akun demo memakai password yang sama. Ganti lewat SEED_DEV_PASSWORD.
   const devPassword = process.env.SEED_DEV_PASSWORD ?? 'password123';
   const hashed = await PasswordUtil.hash(devPassword);
 

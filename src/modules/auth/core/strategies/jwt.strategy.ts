@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { Request } from 'express';
-import { JwtPayload } from '../interfaces/jwt-payload.interface';
+import { JwtPayload, TokenClaims } from '../interfaces/jwt-payload.interface';
 import { AuthService } from '../../auth.service';
 
 @Injectable()
@@ -15,7 +15,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     super({
       jwtFromRequest: ExtractJwt.fromExtractors([
         (request: Request) => request?.cookies?.Authentication,
-        // Untuk agent/skrip: header Authorization: Bearer <token>
+        // FE lintas domain, agent, atau skrip: header Authorization: Bearer <token>
         ExtractJwt.fromAuthHeaderAsBearerToken(),
       ]),
       ignoreExpiration: false,
@@ -23,10 +23,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  /** Izin selalu dibaca ulang dari database agar perubahan hak akses langsung berlaku. */
-  async validate(payload: JwtPayload): Promise<JwtPayload> {
-    const fresh = await this.auth.buildPayload(payload.userId);
-    if (!fresh) throw new UnauthorizedException('Akun tidak ditemukan atau nonaktif');
-    return fresh;
+  /** Peran & izin selalu dibaca ulang dari database agar perubahan hak akses langsung berlaku. */
+  async validate(claims: TokenClaims): Promise<JwtPayload> {
+    const user = await this.auth.resolve(claims);
+    if (!user) throw new UnauthorizedException('Sesi tidak valid atau sudah berakhir. Silakan masuk lagi.');
+    return user;
   }
 }

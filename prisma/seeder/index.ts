@@ -47,7 +47,8 @@ async function main() {
   };
   console.table(counts);
   if (devPassword) {
-    console.log(`🔑 Login password (hanya bila AUTH_PASSWORD_LOGIN=true): <email anggota> / ${devPassword}`);
+    const owner = await prisma.user.findFirst({ where: { position: { name: 'Owner' } }, select: { email: true } });
+    console.log(`🔑 Login demo: ${owner?.email ?? '<email anggota>'} / ${devPassword}  (semua akun manusia memakai password ini)`);
   }
 }
 

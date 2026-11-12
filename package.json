@@ -6,7 +6,7 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "build": "npm run clean && tsc",
+    "build": "npm run clean && nest build",
     "clean": "rm -rf dist tsconfig.tsbuildinfo",
     "copy-templates": "cp -r templates dist/",
     "dev": "ts-node src/cli.ts",
@@ -25,9 +25,11 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
-    "prisma:seed": "ts-node prisma/seeder/index.ts"
+    "prisma:seed": "ts-node prisma/seeder/index.ts",
+    "prisma:init": "ts-node prisma/seeder/init.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1168.0",
     "@nestjs/common": "^11.1.27",
     "@nestjs/config": "^4.0.4",
     "@nestjs/core": "^11.1.27",
