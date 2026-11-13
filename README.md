@@ -34,7 +34,7 @@ Garap aplikasi internal: tidak ada pendaftaran mandiri. Owner/Admin mendaftarkan
 
 | Alur | Endpoint |
 | --- | --- |
-| Masuk | `POST /api/v1/auth/login` `{ email, password }` → `{ accessToken, expiresAt, user }` + cookie `Authentication` |
+| Masuk | `POST /api/v1/auth/login` `{ email, password }` → cookie `Authentication` + `{ id, name, email, access, mustChangePassword }` |
 | Akun yang sedang masuk + izinnya | `GET /api/v1/auth/me` |
 | Ganti password sendiri | `POST /api/v1/auth/change-password` `{ currentPassword, newPassword }` |
 | Keluar | `POST /api/v1/auth/logout` |
@@ -53,11 +53,10 @@ Peran dan izin dibaca ulang dari database di setiap request, jadi perubahan hak 
 
 ## Integrasi dengan FE
 
-**Sesi.** Dua cara, pilih salah satu:
-
-1. Cookie httpOnly `Authentication` (disarankan): panggil API dengan `fetch(url, { credentials: 'include' })`.
-   Alamat FE harus terdaftar di `CORS_ORIGIN`. Bila FE dan API beda situs (mis. `*.workers.dev` + domain lain), set `COOKIE_SAMESITE=none` dan pakai HTTPS.
-2. Header `Authorization: Bearer <accessToken>` dari respons login.
+**Sesi** disimpan di cookie httpOnly `Authentication` yang dipasang oleh `POST /auth/login`; token tidak dikirim di body.
+Panggil API dengan `fetch(url, { credentials: 'include' })`, lalu ambil peran & izin dari `GET /auth/me`.
+Alamat FE harus terdaftar di `CORS_ORIGIN`. Bila FE dan API beda situs (mis. `*.workers.dev` + domain lain), set `COOKIE_SAMESITE=none` dan pakai HTTPS.
+Di Swagger cukup jalankan login sekali; semua endpoint lain otomatis memakai cookie itu.
 
 **Bentuk respons.** Semua endpoint JSON memakai amplop yang sama:
 

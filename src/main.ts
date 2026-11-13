@@ -61,12 +61,11 @@ async function bootstrap() {
       .setTitle('Garap API')
       .setDescription(
         'Backend Garap — manajemen proyek untuk tim manusia & agent AI Kuli Digital. ' +
-          'Login: POST /api/v1/auth/login (email + password). Sesi disimpan di cookie httpOnly "Authentication"; ' +
-          'token yang sama bisa dikirim sebagai Authorization: Bearer. Hak akses mengikuti posisi (Owner, Admin, Anggota, Tamu) dan izinnya.',
+          'Masuk lewat POST /api/v1/auth/login (email + password): sesi langsung tersimpan di cookie httpOnly "Authentication" ' +
+          'dan dipakai otomatis oleh semua endpoint di halaman ini. Hak akses mengikuti posisi (Owner, Admin, Anggota, Tamu) dan izinnya.',
       )
       .setVersion('1.0')
       .addCookieAuth('Authentication')
-      .addBearerAuth()
       .addTag('Authentication', 'Masuk, keluar, ganti password, akun saya')
       .addTag('Members', 'Akun anggota (didaftarkan Owner/Admin)')
       .addTag('Agents', 'Agent AI, profil, dan riwayat run')
@@ -90,6 +89,8 @@ async function bootstrap() {
     SwaggerModule.setup(swaggerPath, app, document, {
       useGlobalPrefix: true,
       swaggerOptions: {
+        // Kirim cookie sesi dari POST /auth/login di setiap request "Try it out".
+        withCredentials: true,
         persistAuthorization: true,
         defaultModelsExpandDepth: -1,
       },

@@ -8,7 +8,7 @@ import { AllowPendingPassword } from '@common/decorators/password-change.decorat
 import { ApiSuccessResponse } from '@common/decorators/api-response.decorator';
 import { AuthService } from '../../auth.service';
 import { ChangePasswordDto, LoginDto } from '../../core/dto/login.dto';
-import { LogoutResponseDto, MeDto, SessionDto } from '../../core/dto/auth-response.dto';
+import { LoginResponseDto, LogoutResponseDto, MeDto } from '../../core/dto/auth-response.dto';
 import { JwtPayload } from '../../core/interfaces/jwt-payload.interface';
 
 export const SESSION_COOKIE = 'Authentication';
@@ -37,15 +37,15 @@ export class AuthController {
   @ApiOperation({
     summary: 'Masuk dengan email + password',
     description:
-      'Sesi disimpan di cookie httpOnly "Authentication" (kirim request FE dengan credentials: "include"). ' +
-      'Token yang sama dikembalikan sebagai accessToken untuk dipakai sebagai Bearer. ' +
-      'Salah password berulang → 429 ACCOUNT_LOCKED. Bila user.mustChangePassword = true, arahkan ke ganti password.',
+      'Sesi langsung disimpan di cookie httpOnly "Authentication": Swagger dan FE (fetch dengan credentials: "include") ' +
+      'otomatis memakainya, tidak perlu menyalin token. Peran & izin lengkap ada di GET /auth/me. ' +
+      'Salah password berulang → 429 ACCOUNT_LOCKED. Bila mustChangePassword = true, arahkan ke ganti password.',
   })
-  @ApiSuccessResponse(SessionDto)
+  @ApiSuccessResponse(LoginResponseDto)
   async login(@Body() dto: LoginDto, @Res({ passthrough: true }) res: Response, @Ip() ip: string) {
-    const session = await this.auth.login(dto, ip);
-    this.setSession(res, session.accessToken);
-    return session;
+    const { token, user } = await this.auth.login(dto, ip);
+    this.setSession(res, token);
+    return user;
   }
 
   @Get('me')
@@ -60,11 +60,11 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @AllowPendingPassword()
   @ApiOperation({ summary: 'Ganti password sendiri. Sesi di perangkat lain berakhir; perangkat ini mendapat token baru.' })
-  @ApiSuccessResponse(SessionDto)
+  @ApiSuccessResponse(LoginResponseDto)
   async changePassword(@GetUser() user: JwtPayload, @Body() dto: ChangePasswordDto, @Res({ passthrough: true }) res: Response, @Ip() ip: string) {
     const session = await this.auth.changePassword(user, dto, ip);
-    this.setSession(res, session.accessToken);
-    return session;
+    this.setSession(res, session.token);
+    return session.user;
   }
 
   @Public()

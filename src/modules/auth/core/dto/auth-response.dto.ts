@@ -16,11 +16,12 @@ export class MeDto {
   mustChangePassword: boolean;
 }
 
-export class SessionDto {
-  @ApiProperty({ description: 'Sama dengan isi cookie "Authentication". Pakai sebagai Bearer bila FE tidak bisa memakai cookie.' })
-  accessToken: string;
-  @ApiProperty({ example: '2026-11-20T03:00:00.000Z' }) expiresAt: string;
-  @ApiProperty({ type: MeDto }) user: MeDto;
+export class LoginResponseDto {
+  @ApiProperty({ example: 'bhagas' }) id: string;
+  @ApiProperty({ example: 'Bhagas' }) name: string;
+  @ApiProperty({ example: 'bhagaskuro@gmail.com' }) email: string;
+  @ApiProperty({ example: 'Owner' }) access: string;
+  @ApiProperty({ example: false, description: 'true = arahkan ke halaman ganti password' }) mustChangePassword: boolean;
 }
 
 export class LogoutResponseDto {

@@ -126,11 +126,18 @@ export class AuthService {
     return this.jwtService.sign({ sub: userId, tv: user.token_version } satisfies TokenClaims, expiresIn ? { expiresIn } : undefined);
   }
 
+  /** Token untuk cookie sesi + ringkasan akun untuk respons login. Token tidak pernah dikirim di body. */
   private async session(userId: number) {
+    const user = await this.prisma.user.findUniqueOrThrow({ where: { id: userId }, include: { position: { select: { name: true } } } });
     return {
-      accessToken: await this.issueToken(userId),
-      expiresAt: new Date(Date.now() + this.sessionMs).toISOString(),
-      user: await this.me(userId),
+      token: await this.issueToken(userId),
+      user: {
+        id: user.username,
+        name: user.display_name,
+        email: user.email,
+        access: user.position.name,
+        mustChangePassword: user.must_change_password,
+      },
     };
   }
 

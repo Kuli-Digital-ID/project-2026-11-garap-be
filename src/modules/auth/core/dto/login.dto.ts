@@ -6,7 +6,7 @@ export const PASSWORD_RULE = /^(?=.*[A-Za-z])(?=.*\d).{8,72}$/;
 export const PASSWORD_MESSAGE = 'Password minimal 8 karakter dan memuat huruf serta angka';
 
 export class LoginDto {
-  @ApiProperty({ example: 'bhagas@kulidigital.id' })
+  @ApiProperty({ example: 'bhagaskuro@gmail.com' })
   @IsEmail({}, { message: 'Format email tidak valid' })
   email: string;
 
