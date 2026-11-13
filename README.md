@@ -109,7 +109,8 @@ Belum ada di BE: Office, Pemakaian AI, Penagihan, balasan otomatis agent di perc
 
 | Kejadian | Isi | Dikirim ke |
 | --- | --- | --- |
-| `ready` | — | pengguna yang baru tersambung |
+| `ready` | `{ online: [username] }` | pengguna yang baru tersambung |
+| `presence` | `{ username, online }` | semua non-tamu; status Online = punya koneksi SSE aktif |
 | `change` | `{ res: ticket\|project\|doc\|request\|approval\|run\|org, key?, project?, by }` | semua anggota non-tamu (tamu hanya untuk proyek tempat ia menjadi anggota); pelaku tidak menerima gaungnya sendiri |
 | `notification` | `{ kind }` | penerima notifikasi |
 | `chat` | `{ op: message\|message.edit\|message.delete\|read\|channel, conversationId, … }` | anggota percakapan (kanal publik: perubahan daftar kanal ke semua non-tamu) |

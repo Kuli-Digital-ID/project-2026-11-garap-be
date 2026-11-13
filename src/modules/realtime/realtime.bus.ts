@@ -17,7 +17,7 @@ export interface Audience {
 
 export interface LiveEvent {
   /** Nama kejadian SSE: change | notification | chat */
-  type: 'change' | 'notification' | 'chat';
+  type: 'change' | 'notification' | 'chat' | 'presence';
   data: Record<string, unknown>;
   to?: Audience;
 }

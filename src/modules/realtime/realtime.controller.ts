@@ -15,6 +15,13 @@ const MAX_STREAMS_PER_USER = 5;
 @Controller({ path: 'events', version: '1' })
 export class RealtimeController {
   private readonly streams = new Map<number, Set<Response>>();
+  /** Username akun yang sedang tersambung (untuk status online). */
+  private readonly names = new Map<number, string>();
+  private readonly offlineTimers = new Map<number, ReturnType<typeof setTimeout>>();
+
+  private onlineNames() {
+    return [...this.names.values()];
+  }
 
   constructor(
     private bus: RealtimeBus,
@@ -45,7 +52,7 @@ export class RealtimeController {
   @ApiOperation({
     summary: 'Aliran kejadian realtime (Server-Sent Events)',
     description:
-      'Koneksi HTTP yang tetap terbuka (EventSource, cookie login). Kejadian: `ready`, `change` {res,key?,project?,by}, `notification`, `chat`. ' +
+      'Koneksi HTTP yang tetap terbuka (EventSource, cookie login). Kejadian: `ready` {online:[username]}, `presence` {username,online}, `change` {res,key?,project?,by}, `notification`, `chat`. ' +
       'Isi kejadian hanya petunjuk; klien mengambil data terbaru lewat endpoint biasa.',
   })
   stream(@GetUser() user: JwtPayload, @Req() req: Request, @Res() res: Response) {
@@ -56,7 +63,9 @@ export class RealtimeController {
       'X-Accel-Buffering': 'no',
     });
     res.flushHeaders();
-    res.write(`retry: 4000\nevent: ready\ndata: {}\n\n`);
+    // Tamu tidak diberi daftar siapa yang online.
+    const online = user.positionName === 'Tamu' ? [] : this.onlineNames();
+    res.write(`retry: 4000\nevent: ready\ndata: ${JSON.stringify({ online })}\n\n`);
 
     // Batasi jumlah tab per akun; yang paling lama ditutup.
     const mine = this.streams.get(user.userId) ?? new Set<Response>();
@@ -67,6 +76,13 @@ export class RealtimeController {
     }
     mine.add(res);
     this.streams.set(user.userId, mine);
+    // Mulai tersambung → online (pemutusan singkat saat sambung ulang tidak dianggap offline).
+    clearTimeout(this.offlineTimers.get(user.userId));
+    this.offlineTimers.delete(user.userId);
+    if (!this.names.has(user.userId)) {
+      this.names.set(user.userId, user.username);
+      this.bus.publish({ type: 'presence', data: { username: user.username, online: true } });
+    }
 
     // Kejadian diproses berurutan agar urutan kiriman tetap sama dengan urutan terbit.
     let queue = Promise.resolve();
@@ -86,7 +102,18 @@ export class RealtimeController {
       clearTimeout(expire);
       sub.unsubscribe();
       mine.delete(res);
-      if (!mine.size) this.streams.delete(user.userId);
+      if (!mine.size) {
+        this.streams.delete(user.userId);
+        this.offlineTimers.set(
+          user.userId,
+          setTimeout(() => {
+            if (this.streams.has(user.userId)) return;
+            this.names.delete(user.userId);
+            this.offlineTimers.delete(user.userId);
+            this.bus.publish({ type: 'presence', data: { username: user.username, online: false } });
+          }, 8000),
+        );
+      }
     };
     req.on('close', cleanup);
     res.on('close', cleanup);
