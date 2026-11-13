@@ -55,7 +55,7 @@ export class NotificationsService {
         if (actor?.kind === 'agent') return;
       }
       const prompt = kind === 'manual' ? `Keputusan persetujuan: pengguna ${n.text}${n.target ? ` — "${n.target}"` : ''}. Lanjutkan pekerjaan sesuai keputusan itu.` : (n.prompt ?? n.text);
-      await enqueueAgentJobs(this.prisma, { userIds: ids, kind, actorId: n.actorId, ticketKey: n.ticketKey, conversationId: n.conversationId, prompt });
+      await enqueueAgentJobs(this.prisma, { userIds: ids, kind, actorId: n.actorId, ticketKey: n.ticketKey, conversationId: n.conversationId, projectSlug: n.project, prompt });
     } catch {
       // Antrean gagal tidak boleh menggagalkan notifikasi.
     }

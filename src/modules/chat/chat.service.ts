@@ -238,6 +238,16 @@ export class ChatService {
 
     const members = await this.prisma.conversationMember.findMany({ where: { conversation_id: id }, select: { user_id: true } });
     const memberIds = members.map((m) => m.user_id);
+    // Agent yang di-@mention di kanal publik otomatis bergabung agar bisa menjawab.
+    if (conv.kind === 'channel' && !conv.is_private) {
+      const mentionedAgents = (await this.prisma.user.findMany({
+        where: { id: { in: await this.notifications.mentionedIds(text) }, kind: 'agent', is_active: true, deleted_at: null }, select: { id: true },
+      })).map((a) => a.id).filter((aid) => !memberIds.includes(aid));
+      for (const aid of mentionedAgents) {
+        await this.prisma.conversationMember.create({ data: { conversation_id: id, user_id: aid } }).catch(() => undefined);
+        memberIds.push(aid);
+      }
+    }
     const message = toMessage(msg);
     this.bus.publish({ type: 'chat', data: { op: 'message', conversationId: String(id), message }, to: { users: memberIds } });
     if (!member && !conv.is_private) this.channelChanged(conv, memberIds);

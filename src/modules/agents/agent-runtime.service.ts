@@ -21,6 +21,7 @@ interface Job {
   kind: string;
   ticket_key: string | null;
   conversation_id: number | null;
+  project_slug: string | null;
   prompt: string;
   actor_id: number | null;
   attempts: number;
@@ -71,7 +72,7 @@ export class AgentRuntime implements OnModuleInit, OnModuleDestroy {
   }
 
   private concurrency() {
-    return Math.max(1, Number(process.env.AGENT_CONCURRENCY) || 2);
+    return Math.max(1, Number(process.env.AGENT_CONCURRENCY) || 4);
   }
 
   /** Ambil tugas selagi masih ada slot. Satu agent hanya mengerjakan satu tugas pada satu waktu. */
@@ -102,7 +103,7 @@ export class AgentRuntime implements OnModuleInit, OnModuleDestroy {
           AND agent_id NOT IN (SELECT user_id FROM agent_profiles WHERE current_task = 'Dijeda')
         ORDER BY id FOR UPDATE SKIP LOCKED LIMIT 1
       )
-      RETURNING id, agent_id, kind, ticket_key, conversation_id, prompt, actor_id, attempts`;
+      RETURNING id, agent_id, kind, ticket_key, conversation_id, project_slug, prompt, actor_id, attempts`;
     return rows[0] ?? null;
   }
 
@@ -155,7 +156,7 @@ export class AgentRuntime implements OnModuleInit, OnModuleDestroy {
 
       // Konteks tugas
       let ticketJson = '';
-      let projectSlug: string | undefined;
+      let projectSlug: string | undefined = job.project_slug ?? undefined;
       let ticketId: number | undefined;
       if (job.ticket_key) {
         const t = await this.tickets.get(me, job.ticket_key).catch(() => null);
@@ -185,6 +186,7 @@ export class AgentRuntime implements OnModuleInit, OnModuleDestroy {
         }
       }
       await this.setWorking(agent.id, title);
+      if (job.conversation_id) await this.announceTyping(job.conversation_id, agent.username);
 
       // ---- Loop agent ----
       const system = await this.systemPrompt(agent.display_name, agent.role, profile, job);
@@ -486,6 +488,12 @@ export class AgentRuntime implements OnModuleInit, OnModuleDestroy {
     await this.prisma.agentProfile.update({ where: { user_id: agentId }, data: { current_task: title } });
     await this.prisma.user.update({ where: { id: agentId }, data: { status: 'bekerja' } });
     this.bus.publish({ type: 'change', data: { res: 'org' } });
+  }
+
+  /** Beri tahu anggota percakapan bahwa agent sedang menulis balasan. */
+  private async announceTyping(conversationId: number, username: string) {
+    const members = await this.prisma.conversationMember.findMany({ where: { conversation_id: conversationId }, select: { user_id: true } });
+    this.bus.publish({ type: 'chat', data: { op: 'typing', conversationId: String(conversationId), username }, to: { users: members.map((m) => m.user_id) } });
   }
 
   private async setIdle(agentId: number, done: boolean) {

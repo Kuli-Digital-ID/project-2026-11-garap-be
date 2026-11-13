@@ -859,6 +859,8 @@ model AgentJob {
   kind            String
   ticket_key      String?
   conversation_id Int?
+  /// Proyek konteks (mis. dari keputusan persetujuan) bila tidak ada tiket.
+  project_slug    String?
   /// Pesan/komentar pemicu atau perintah manual.
   prompt          String    @default("")
   actor_id        Int?

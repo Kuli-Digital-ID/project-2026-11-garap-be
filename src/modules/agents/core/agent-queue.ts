@@ -9,6 +9,7 @@ export interface EnqueueInput {
   actorId?: number | null;
   ticketKey?: string;
   conversationId?: number;
+  projectSlug?: string;
   prompt?: string;
 }
 
@@ -44,6 +45,7 @@ export async function enqueueAgentJobs(prisma: PrismaService, input: EnqueueInpu
         actor_id: input.actorId ?? null,
         ticket_key: input.ticketKey ?? null,
         conversation_id: input.conversationId ?? null,
+        project_slug: input.projectSlug ?? null,
         prompt: (input.prompt ?? '').slice(0, 8000),
       },
     });
