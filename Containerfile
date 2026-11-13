@@ -11,7 +11,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-cert
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
-RUN npx prisma generate && npm run build && npm prune --omit=dev
+# prisma.config.ts mewajibkan DATABASE_URL; generate tidak menyambung ke database, jadi cukup nilai sementara.
+RUN DATABASE_URL=postgresql://build:build@127.0.0.1:5432/build npx prisma generate \
+  && npm run build && npm prune --omit=dev
 
 # ---------- runtime ----------
 FROM node:22-bookworm-slim
