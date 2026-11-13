@@ -5,8 +5,8 @@
 # ---------- build ----------
 FROM node:22-bookworm-slim AS build
 WORKDIR /app
-# openssl: dibutuhkan Prisma. python3/make/g++: cadangan bila bcrypt harus dikompilasi.
-RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates python3 make g++ \
+# openssl: dibutuhkan Prisma. bcrypt membawa binary siap pakai untuk linux-x64/arm64, jadi tidak perlu compiler.
+RUN apt-get update && apt-get install -y --no-install-recommends openssl ca-certificates \
   && rm -rf /var/lib/apt/lists/*
 COPY package.json package-lock.json ./
 RUN npm ci
