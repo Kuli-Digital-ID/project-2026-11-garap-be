@@ -35,12 +35,37 @@ export const TOOL_SPECS: ToolSpec[] = [
   {
     name: 'update_ticket',
     description: 'Ubah judul, deskripsi, prioritas, atau penerima tugas sebuah tiket.',
-    input_schema: obj({ key: str('kunci tiket'), title: str('judul baru'), description: str('deskripsi baru (menggantikan yang lama)'), priority: { type: 'string', enum: ['rendah', 'sedang', 'tinggi', 'mendesak'] }, assignee: str('username penerima tugas; kosongkan "" untuk melepas') }, ['key']),
+    input_schema: obj({ key: str('kunci tiket'), title: str('judul baru'), description: str('deskripsi baru (menggantikan yang lama)'), priority: { type: 'string', enum: ['rendah', 'sedang', 'tinggi', 'mendesak'] }, assignee: str('username penerima tugas; kosongkan "" untuk melepas'), epic: { type: 'integer', description: 'id epic (dari get_planning); 0 untuk melepas dari epic' }, due: str('tenggat YYYY-MM-DD; kosongkan "" untuk menghapus'), sprint: { type: 'string', enum: ['active', 'backlog'], description: '"active" = masukkan ke sprint aktif, "backlog" = keluarkan' } }, ['key']),
   },
   {
     name: 'create_ticket',
     description: 'Buat tiket baru di proyek, mis. memecah pekerjaan besar menjadi tiket kecil.',
-    input_schema: obj({ project: str('slug proyek'), title: str('judul'), description: str('deskripsi'), type: { type: 'string', enum: ['task', 'bug', 'story', 'dokumen', 'desain', 'konten'] }, priority: { type: 'string', enum: ['rendah', 'sedang', 'tinggi', 'mendesak'] }, assignee: str('username penerima tugas'), status: str('kode status awal') }, ['project', 'title']),
+    input_schema: obj({ project: str('slug proyek'), title: str('judul'), description: str('deskripsi'), type: { type: 'string', enum: ['task', 'bug', 'story', 'dokumen', 'desain', 'konten'] }, priority: { type: 'string', enum: ['rendah', 'sedang', 'tinggi', 'mendesak'] }, assignee: str('username penerima tugas'), status: str('kode status awal'), epic: { type: 'integer', description: 'id epic (dari get_planning)' }, due: str('tenggat YYYY-MM-DD'), sprint: { type: 'string', enum: ['active', 'backlog'], description: 'default active' } }, ['project', 'title']),
+  },
+  {
+    name: 'get_planning',
+    description: 'Lihat perencanaan proyek: semua sprint (id, tanggal, status) dan epic (id, minggu mulai, durasi, progres). Panggil sebelum membuat epic/sprint agar tidak ganda.',
+    input_schema: obj({ project: str('slug proyek') }, ['project']),
+  },
+  {
+    name: 'create_epic',
+    description: 'Buat epic baru di linimasa proyek. start_week = minggu ke berapa dimulai (0 = minggu pertama proyek), weeks = durasi dalam minggu.',
+    input_schema: obj({ project: str('slug proyek'), name: str('nama epic'), start_week: { type: 'integer', minimum: 0 }, weeks: { type: 'integer', minimum: 1 }, color: str('warna hex, mis. #22A06B (opsional)'), owner: str('username pemilik epic (opsional)') }, ['project', 'name']),
+  },
+  {
+    name: 'update_epic',
+    description: 'Ubah epic: nama, jadwal (start_week/weeks), progres 0-100, atau pemilik.',
+    input_schema: obj({ project: str('slug proyek'), id: { type: 'integer', description: 'id epic' }, name: str('nama baru'), start_week: { type: 'integer', minimum: 0 }, weeks: { type: 'integer', minimum: 1 }, progress: { type: 'integer', minimum: 0, maximum: 100 }, owner: str('username pemilik') }, ['project', 'id']),
+  },
+  {
+    name: 'create_sprint',
+    description: 'Buat sprint baru. Bila belum ada sprint aktif, sprint ini langsung aktif; bila sudah ada, statusnya "rencana".',
+    input_schema: obj({ project: str('slug proyek'), name: str('mis. "Sprint 1"'), start: str('tanggal mulai YYYY-MM-DD'), end: str('tanggal selesai YYYY-MM-DD'), goal: str('tujuan sprint (opsional)') }, ['project', 'name', 'start', 'end']),
+  },
+  {
+    name: 'update_sprint',
+    description: 'Ubah sprint yang belum selesai: nama, tujuan, tanggal, atau status ("rencana"/"aktif").',
+    input_schema: obj({ project: str('slug proyek'), id: { type: 'integer', description: 'id sprint' }, name: str('nama baru'), goal: str('tujuan baru'), start: str('YYYY-MM-DD'), end: str('YYYY-MM-DD'), state: { type: 'string', enum: ['rencana', 'aktif'] } }, ['project', 'id']),
   },
   {
     name: 'list_docs',
