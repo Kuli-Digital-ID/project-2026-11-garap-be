@@ -69,6 +69,8 @@ model User {
   sent_notifications Notification[] @relation("NotificationActor")
   audit_logs         AuditLog[]
   agent_runs         AgentRun[]
+  agent_jobs         AgentJob[]     @relation("AgentJobAgent")
+  agent_usage        AgentUsage[]   @relation("AgentUsageAgent")
   ai_providers       AiProvider[]
   social_channels    SocialChannel[]
   content_schedules  ContentSchedule[] @relation("ScheduleAssignee")
@@ -847,4 +849,49 @@ model ChatMessage {
 
   @@index([conversation_id, id])
   @@map("chat_messages")
+}
+
+/// Antrean tugas untuk agent. Diambil oleh AgentRuntime (FOR UPDATE SKIP LOCKED), tanpa Redis.
+model AgentJob {
+  id              Int       @id @default(autoincrement())
+  agent_id        Int
+  /// assign | mention | comment | dm | manual
+  kind            String
+  ticket_key      String?
+  conversation_id Int?
+  /// Pesan/komentar pemicu atau perintah manual.
+  prompt          String    @default("")
+  actor_id        Int?
+  status          String    @default("queued") // queued | running | done | failed
+  attempts        Int       @default(0)
+  run_after       DateTime  @default(now())
+  locked_at       DateTime?
+  finished_at     DateTime?
+  error           String?
+  run_code        String?
+  created_at      DateTime  @default(now())
+
+  agent User @relation("AgentJobAgent", fields: [agent_id], references: [id], onDelete: Cascade)
+
+  @@index([status, run_after])
+  @@index([agent_id, created_at])
+  @@map("agent_jobs")
+}
+
+/// Satu baris per pemanggilan agent: dasar hitungan anggaran bulanan.
+model AgentUsage {
+  id         Int      @id @default(autoincrement())
+  agent_id   Int
+  job_id     Int?
+  model      String   @default("")
+  tokens_in  Int      @default(0)
+  tokens_out Int      @default(0)
+  /// Rupiah.
+  cost       Int      @default(0)
+  created_at DateTime @default(now())
+
+  agent User @relation("AgentUsageAgent", fields: [agent_id], references: [id], onDelete: Cascade)
+
+  @@index([agent_id, created_at])
+  @@map("agent_usage")
 }

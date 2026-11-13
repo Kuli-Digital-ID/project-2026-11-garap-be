@@ -4,6 +4,7 @@ import { PrismaService } from '@common/prisma/prisma.service';
 import { JwtPayload } from '@modules/auth/core/interfaces/jwt-payload.interface';
 import { isManager, projectScope } from '@common/helpers/access';
 import { NotificationsService } from '@modules/activity/notifications.service';
+import { enqueueAgentJobs } from '@modules/agents/core/agent-queue';
 import { RealtimeBus } from '@modules/realtime/realtime.bus';
 import { AddMembersDto, CreateChannelDto, MessagesQueryDto, SendMessageDto, UpdateChannelDto } from './core/dto/chat.dto';
 import { ConversationRow, conversationInclude, messageInclude, toConversation, toMessage } from './chat.serializer';
@@ -250,7 +251,13 @@ export class ChatService {
       text: conv.kind === 'dm' ? 'menyebut Anda di pesan langsung' : `menyebut Anda di #${conv.name}`,
       target: text.length > 80 ? `${text.slice(0, 80)}…` : text,
       href: `/percakapan?c=${id}`,
+      conversationId: id,
+      prompt: text,
     });
+    // Pesan langsung ke agent: agent membalas. (Di kanal, agent hanya merespons bila di-@mention.)
+    if (conv.kind === 'dm') {
+      await enqueueAgentJobs(this.prisma, { userIds: memberIds, kind: 'dm', actorId: user.userId, conversationId: id, prompt: text }).catch(() => 0);
+    }
     return message;
   }
 

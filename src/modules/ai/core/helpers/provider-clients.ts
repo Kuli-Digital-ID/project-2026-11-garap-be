@@ -130,3 +130,75 @@ export async function chat(c: ProviderCredentials, model: string, system: string
     }
   }
 }
+
+// ---------- Agent: pemanggilan dengan alat (tool use) ----------
+
+export interface ToolSpec {
+  name: string;
+  description: string;
+  input_schema: Record<string, unknown>;
+}
+
+export type ContentBlock =
+  | { type: 'text'; text: string }
+  | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
+  | { type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean };
+
+export interface AgentMessage {
+  role: 'user' | 'assistant';
+  content: string | ContentBlock[];
+}
+
+export interface ToolTurn {
+  content: ContentBlock[];
+  stopReason: string;
+  tokensIn: number;
+  tokensOut: number;
+  cacheRead: number;
+  cacheWrite: number;
+}
+
+/** Satu giliran model Anthropic dengan alat. Pemanggil yang menjalankan alat lalu mengirim hasilnya kembali. */
+export async function chatWithTools(
+  c: ProviderCredentials,
+  model: string,
+  system: string,
+  messages: AgentMessage[],
+  tools: ToolSpec[],
+  maxTokens = 3000,
+): Promise<ToolTurn> {
+  if (c.provider !== 'anthropic') throw new ProviderError('Alat agent saat ini hanya tersedia untuk Anthropic');
+  const base = (c.baseUrl || PROVIDER_INFO.anthropic.baseUrl || '').replace(/\/$/, '');
+  let lastErr: unknown;
+  // Ulangi sebentar untuk kelebihan beban (429/529) dan galat jaringan.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const j = await postJson(
+        `${base}/messages`,
+        { 'x-api-key': c.apiKey!, 'anthropic-version': '2023-06-01' },
+        {
+          model,
+          max_tokens: maxTokens,
+          system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
+          tools: tools.map((t, i) => (i === tools.length - 1 ? { ...t, cache_control: { type: 'ephemeral' } } : t)),
+          messages,
+        },
+        180_000,
+      );
+      return {
+        content: (j.content ?? []).filter((b: { type: string }) => b.type === 'text' || b.type === 'tool_use'),
+        stopReason: j.stop_reason ?? 'end_turn',
+        tokensIn: j.usage?.input_tokens ?? 0,
+        tokensOut: j.usage?.output_tokens ?? 0,
+        cacheRead: j.usage?.cache_read_input_tokens ?? 0,
+        cacheWrite: j.usage?.cache_creation_input_tokens ?? 0,
+      };
+    } catch (e) {
+      lastErr = e;
+      const msg = e instanceof Error ? e.message : '';
+      if (!/ 429| 529| 5\d\d|Tidak bisa menghubungi/.test(msg)) throw e;
+      await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+    }
+  }
+  throw lastErr;
+}

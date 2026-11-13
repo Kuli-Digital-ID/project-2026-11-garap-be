@@ -8,6 +8,6 @@ import { ApprovalsController, AuditController, NotificationsController, RunsCont
 @Module({
   controllers: [NotificationsController, ApprovalsController, RunsController, AuditController],
   providers: [AuditService, NotificationsService, ApprovalsService],
-  exports: [AuditService, NotificationsService],
+  exports: [AuditService, NotificationsService, ApprovalsService],
 })
 export class ActivityModule {}

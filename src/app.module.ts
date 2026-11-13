@@ -34,6 +34,7 @@ import { WorkspaceModule } from './modules/workspace/workspace.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { RealtimeInterceptor } from './modules/realtime/realtime.interceptor';
 import { ChatModule } from './modules/chat/chat.module';
+import { AgentsModule } from './modules/agents/agents.module';
 
 @Module({
   imports: [
@@ -69,6 +70,7 @@ import { ChatModule } from './modules/chat/chat.module';
     WorkspaceModule,
     RealtimeModule,
     ChatModule,
+    AgentsModule,
     HealthModule,
   ],
   providers: [

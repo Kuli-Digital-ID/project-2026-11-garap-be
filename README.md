@@ -274,3 +274,14 @@ src/
   modules/
     auth/ activity/ organization/ projects/ tickets/ files/ requests/ docs/ content/ ai/ workspace/ health/
 ```
+
+
+## Agent runtime
+
+Agent bekerja sungguhan lewat antrean berbasis Postgres (tabel `agent_jobs`, tanpa Redis) yang dijalankan di dalam proses API.
+
+- **Pemicu**: tiket ditugaskan ke agent, agent di-@mention (tiket atau chat), komentar di tiket yang ia tangani, pesan langsung ke agent, keputusan persetujuan, atau tombol "Beri tugas" di profil agent (`POST /agent-runtime/:username/tasks`).
+- **Mesin**: model Anthropic dengan tool use (baca/komentar/pindah/ubah/buat tiket, dokumen, kirim pesan, minta persetujuan, catat pelajaran). Agent hanya bekerja di proyek yang ia ikuti. Tindakan berisiko lewat `request_approval`.
+- **Biaya**: tiap pemanggilan dicatat di `agent_usage`; anggaran bulanan di profil agent menghentikan agent bila habis. Tarif perkiraan per model di `agent-pricing.ts` (ubah dengan `AGENT_PRICE_USD_PER_MTOK="3,15"` dan `USD_IDR`).
+- **Env**: `AGENT_RUNNER=false` mematikan mesin (mis. bila menjalankan lebih dari satu instance, cukup satu yang aktif), `AGENT_CONCURRENCY` (default 2), `AGENT_POLL_MS` (default 2000), `AGENT_MAX_STEPS` (default 12).
+- Setup: hubungkan API key Anthropic di Pengaturan → Penyedia AI, rekrut agent, tambahkan ke proyek.

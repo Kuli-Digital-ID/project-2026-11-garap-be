@@ -183,7 +183,7 @@ export class TicketsService {
     if (assignee) {
       await this.notifications.notify({
         recipientIds: [assignee], actorId: user.userId, kind: 'assign', text: 'menugaskan tiket ke Anda', target: `${ticket.key} ${ticket.title}`,
-        href: this.href(ticket, project), project: project.slug,
+        href: this.href(ticket, project), project: project.slug, ticketKey: ticket.key,
       });
     }
     return this.detail(ticket.id);
@@ -232,7 +232,7 @@ export class TicketsService {
     const href = this.href(t, t.project);
     if (change.assignee && change.assignee !== t.assignee_id) {
       await this.notifications.notify({
-        recipientIds: [change.assignee], actorId: user.userId, kind: 'assign', text: 'menugaskan tiket ke Anda', target: `${t.key} ${t.title}`, href, project: t.project.slug,
+        recipientIds: [change.assignee], actorId: user.userId, kind: 'assign', text: 'menugaskan tiket ke Anda', target: `${t.key} ${t.title}`, href, project: t.project.slug, ticketKey: t.key,
       });
     }
     if (change.status && change.status.id !== t.status_id) {
@@ -325,12 +325,12 @@ export class TicketsService {
     const href = `${this.href(t, t.project)}#komentar-${c.id}`;
     const mentioned = await this.notifications.mentionedIds(dto.text);
     await this.notifications.notify({
-      recipientIds: mentioned, actorId: user.userId, kind: 'mention', text: 'menyebut Anda di komentar', target: `${t.key} ${t.title}`, href, project: t.project.slug,
+      recipientIds: mentioned, actorId: user.userId, kind: 'mention', text: 'menyebut Anda di komentar', target: `${t.key} ${t.title}`, href, project: t.project.slug, ticketKey: t.key, prompt: dto.text,
     });
     const watchers = await this.prisma.ticketWatcher.findMany({ where: { ticket_id: t.id }, select: { user_id: true } });
     await this.notifications.notify({
       recipientIds: [t.assignee_id, t.reporter_id, ...watchers.map((w) => w.user_id)].filter((id) => !mentioned.includes(id as number)),
-      actorId: user.userId, kind: 'comment', text: 'mengomentari tiket', target: `${t.key} ${t.title}`, href, project: t.project.slug,
+      actorId: user.userId, kind: 'comment', text: 'mengomentari tiket', target: `${t.key} ${t.title}`, href, project: t.project.slug, ticketKey: t.key, prompt: dto.text,
     });
     return this.detail(t.id);
   }

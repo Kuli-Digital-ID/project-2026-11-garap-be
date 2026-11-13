@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@common/prisma/prisma.service';
 import { notificationInclude, toNotification } from '@common/serializers';
 import { RealtimeBus } from '@modules/realtime/realtime.bus';
+import { AgentJobKind, enqueueAgentJobs } from '@modules/agents/core/agent-queue';
 
 export interface NotifyInput {
   recipientIds: (number | null | undefined)[];
@@ -11,6 +12,10 @@ export interface NotifyInput {
   target?: string;
   href: string;
   project?: string;
+  /** Konteks untuk agent penerima: tiket / percakapan asal dan teks pemicunya. */
+  ticketKey?: string;
+  conversationId?: number;
+  prompt?: string;
 }
 
 @Injectable()
@@ -37,6 +42,23 @@ export class NotificationsService {
     });
     // Beri tahu penerima yang sedang terhubung agar lonceng & kotak masuk langsung diperbarui.
     this.bus.publish({ type: 'notification', data: { kind: n.kind }, to: { users: ids } });
+    await this.wakeAgents(n, ids);
+  }
+
+  /** Penerima yang berupa agent dimasukkan ke antrean kerja. Komentar dari sesama agent tidak membangunkan agent. */
+  private async wakeAgents(n: NotifyInput, ids: number[]) {
+    try {
+      const kind: AgentJobKind | null = n.kind === 'assign' ? 'assign' : n.kind === 'mention' ? 'mention' : n.kind === 'comment' ? 'comment' : n.kind === 'approval' ? 'manual' : null;
+      if (!kind) return;
+      if (kind === 'comment' && n.actorId) {
+        const actor = await this.prisma.user.findUnique({ where: { id: n.actorId }, select: { kind: true } });
+        if (actor?.kind === 'agent') return;
+      }
+      const prompt = kind === 'manual' ? `Keputusan persetujuan: pengguna ${n.text}${n.target ? ` — "${n.target}"` : ''}. Lanjutkan pekerjaan sesuai keputusan itu.` : (n.prompt ?? n.text);
+      await enqueueAgentJobs(this.prisma, { userIds: ids, kind, actorId: n.actorId, ticketKey: n.ticketKey, conversationId: n.conversationId, prompt });
+    } catch {
+      // Antrean gagal tidak boleh menggagalkan notifikasi.
+    }
   }
 
   /** Cari @username di teks lalu kembalikan id user-nya. */

@@ -8,5 +8,6 @@ import { DocsController } from './controllers/v1/docs.controller';
   imports: [ProjectsModule, OrganizationModule],
   controllers: [DocsController],
   providers: [DocsService],
+  exports: [DocsService],
 })
 export class DocsModule {}
