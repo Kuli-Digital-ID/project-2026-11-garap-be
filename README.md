@@ -20,8 +20,11 @@ npm run start:dev
 Isi `DATABASE_URL`, `JWT_SECRET`, `JWT_REFRESH_SECRET`, dan `AI_KEY_SECRET` di `.env` sebelum menjalankan migrasi.
 
 - API: http://localhost:4000 · Swagger: http://localhost:4000/api/docs · Health: http://localhost:4000/api/v1/health
-- `npm run prisma:seed` **mengosongkan semua tabel** lalu mengisi data demo (sama dengan demo FE).
-  Semua akun manusia di data demo memakai password `password123` (ubah lewat `SEED_DEV_PASSWORD`); email Owner dicetak di akhir seed.
+- `npm run prisma:seed` **mengosongkan semua tabel** lalu hanya menyisakan posisi + izin, workspace, dan satu akun Owner
+  (`bhagaskuro`, email `bhagaskuro@gmail.com`). Tanpa `OWNER_PASSWORD`, password acak dicetak sekali dan wajib diganti saat masuk pertama.
+  Ganti isi akun lewat `OWNER_EMAIL`, `OWNER_NAME`, `OWNER_USERNAME`, `OWNER_PASSWORD`. Di produksi wajib `SEED_CONFIRM=yes`.
+- `npm run prisma:seed:demo` mengosongkan semua tabel lalu mengisi data demo (sama dengan demo FE).
+  Semua akun manusia di data demo memakai password `password123` (ubah lewat `SEED_DEV_PASSWORD`).
 - Untuk database sungguhan (tanpa data demo) pakai `prisma:init`: membuat posisi, izin, dan akun Owner pertama tanpa menghapus apa pun.
 
 ```bash
@@ -95,7 +98,46 @@ Daftar tiket (papan, backlog) tidak memuat `comments`, `attachments`, `links`; a
 | `inviteMember` · `updateMember` · `updateEmployee` | `POST /members` · `PATCH /members/:username` · `PATCH /members/:username/employee` |
 | `updateWorkspace` | `PATCH /workspace` |
 
-Belum ada di BE: Percakapan (`sendMessage`, `openDm`), Office, Pemakaian AI, Penagihan.
+| `sendMessage` · `openDm` · `createChannel` · `loadMessages` | `POST /conversations/:id/messages` · `POST /conversations/dm` · `POST /conversations` · `GET /conversations/:id/messages` |
+| (aliran realtime di store) | `GET /events` (SSE) |
+
+Belum ada di BE: Office, Pemakaian AI, Penagihan, balasan otomatis agent di percakapan.
+
+## Realtime (SSE)
+
+`GET /api/v1/events` adalah koneksi HTTP yang tetap terbuka (Server-Sent Events, cookie login yang sama). FE membukanya lewat `EventSource` setelah masuk.
+
+| Kejadian | Isi | Dikirim ke |
+| --- | --- | --- |
+| `ready` | — | pengguna yang baru tersambung |
+| `change` | `{ res: ticket\|project\|doc\|request\|approval\|run\|org, key?, project?, by }` | semua anggota non-tamu (tamu hanya untuk proyek tempat ia menjadi anggota); pelaku tidak menerima gaungnya sendiri |
+| `notification` | `{ kind }` | penerima notifikasi |
+| `chat` | `{ op: message\|message.edit\|message.delete\|read\|channel, conversationId, … }` | anggota percakapan (kanal publik: perubahan daftar kanal ke semua non-tamu) |
+
+Isi kejadian hanya petunjuk. FE mengambil data terbarunya lewat endpoint biasa, sehingga pengecekan izin tidak terlewati.
+Setiap permintaan tulis yang berhasil diumumkan otomatis oleh `RealtimeInterceptor`; modul baru tidak perlu menambah kode.
+Koneksi dikirimi `: ping` tiap 20 detik, ditutup tiap 1 jam (browser menyambung ulang sendiri), dan dibatasi 5 tab per akun.
+
+Cukup untuk satu instance BE (kejadian beredar di dalam proses). Bila BE dijalankan lebih dari satu, ganti isi `RealtimeBus` dengan Redis pub/sub;
+pemanggilnya tidak berubah. Di Nginx Proxy Manager tidak perlu pengaturan khusus (BE mengirim `X-Accel-Buffering: no`).
+
+## Percakapan
+
+Kanal tim dan pesan langsung (DM), disimpan di Postgres dan dikirim ke anggota lewat SSE.
+
+| Endpoint | Fungsi |
+| --- | --- |
+| `GET /conversations` | Kanal & DM saya (+ kanal publik yang belum diikuti), dengan jumlah belum dibaca |
+| `POST /conversations` | Buat kanal `{ name, topic?, isPrivate?, memberIds?, project? }` |
+| `POST /conversations/dm` | Buka/buat DM `{ username }` (manusia atau agent) |
+| `PATCH · DELETE /conversations/:id` | Ubah / hapus kanal (pembuat, Admin, Owner) |
+| `POST /conversations/:id/join` · `POST …/members` · `DELETE …/members/:username` | Gabung kanal publik, tambah anggota, keluar / keluarkan |
+| `GET · POST /conversations/:id/messages` | Riwayat (`before`, `limit`) · kirim pesan (kanal publik: otomatis bergabung) |
+| `PATCH · DELETE /conversations/:id/messages/:mid` | Ubah pesan sendiri · hapus (pengirim, Admin, Owner) |
+| `POST /conversations/:id/read` | Tandai terbaca |
+
+Kanal privat dan DM hanya terlihat anggotanya; Tamu tidak bisa membuat kanal atau DM dan hanya melihat kanal tempat ia diundang.
+`@username` di pesan mengirim notifikasi mention ke anggota percakapan itu. Pesan ke agent tersimpan, tetapi agent belum membalas otomatis.
 
 ## Lampiran
 
@@ -155,8 +197,11 @@ Database tidak ikut dibuat: pakai Postgres yang sudah ada di server (`127.0.0.1:
 
 ### Data demo
 
-Actions › Deploy Garap Backend › Run workflow › centang **seed**. Ini **menghapus semua data** lalu mengisi data demo
-(semua akun manusia memakai password `password123`). Jangan dipakai setelah aplikasi dipakai sungguhan.
+Actions › Deploy Garap Backend › Run workflow:
+- centang **seed**: **menghapus semua data**, hanya akun Owner dari secret `OWNER_EMAIL`/`OWNER_NAME`/`OWNER_PASSWORD` yang tersisa;
+- centang **demo**: **menghapus semua data** lalu mengisi data demo (password semua akun manusia `password123`).
+
+Jangan dipakai setelah aplikasi dipakai sungguhan.
 
 ### Perintah manual di server
 
@@ -169,13 +214,13 @@ podman run --rm --network=host --env-file .env garap-be:latest npx prisma migrat
 
 ### Domain FE & API
 
-FE (`kulidigital.id`) dan API (`kulidigital.cloud`) berbeda situs, sehingga cookie login menjadi cookie lintas situs
-(`COOKIE_SAMESITE=none`, wajib HTTPS). Chrome menerimanya, tetapi **Safari dan Firefox memblokir cookie lintas situs secara bawaan**,
-sehingga login dari browser itu akan gagal. Dua cara mengatasinya:
+Browser tidak memanggil `garap.kulidigital.cloud` langsung. FE punya proxy `/api/*` (route `src/app/api/[...path]/route.ts`
+di repo FE) yang meneruskan request ke BE, sehingga cookie sesi menjadi milik `garap.kulidigital.id` dan berlaku di semua browser
+(termasuk Safari & Firefox). Karena itu cukup `COOKIE_SAMESITE=lax` dan `COOKIE_DOMAIN` kosong.
 
-- **Disarankan:** FE meneruskan `https://garap.kulidigital.id/api/*` ke `https://garap.kulidigital.cloud/api/*` (route/proxy di Worker FE).
-  Browser hanya melihat satu situs, jadi set `COOKIE_SAMESITE=lax`, `COOKIE_DOMAIN=` kosong, dan `API_PUBLIC_URL=https://garap.kulidigital.id`.
-- Atau pindahkan API ke subdomain `kulidigital.id` (mis. `api.garap.kulidigital.id`) dengan `COOKIE_SAMESITE=lax`, `COOKIE_DOMAIN=.kulidigital.id`.
+Semua request lewat proxy tampak berasal dari IP Cloudflare. Agar batas login per IP & log audit memakai IP asli pengguna,
+isi `PROXY_SECRET` di BE dan secret Worker `GARAP_PROXY_SECRET` di FE dengan nilai yang sama (`openssl rand -base64 32`).
+Tanpa itu aplikasi tetap jalan; hanya pencatatan IP yang kurang akurat.
 
 ### Pengaman yang aktif di produksi
 
@@ -199,6 +244,8 @@ sehingga login dari browser itu akan gagal. Dua cara mengatasinya:
 | `content`, `social` | Kalender konten, konten rutin (tiket dibuat otomatis H-n), publikasi per akun (draf → persetujuan → terjadwal → tayang), agent menulis caption/naskah dengan model AI-nya, statistik & laporan performa, akun YouTube/Instagram/Facebook/TikTok/LinkedIn/X (OAuth atau manual) |
 | `approvals`, `runs` | Persetujuan tindakan agent, riwayat run agent |
 | `notifications`, `audit` | Notifikasi per akun, log audit |
+| `conversations` | Kanal tim & pesan langsung, pesan, belum dibaca |
+| `events` | Aliran realtime (SSE) |
 
 Respons memakai bentuk yang sama dengan tipe FE (`src/lib/types.ts`): id anggota = `username`, proyek = `slug`, tiket = `key`.
 
@@ -219,7 +266,7 @@ Media diambil dari lampiran tiket yang punya URL publik.
 prisma/
   schema.prisma
   migrations/
-  seeder/            # index.ts + steps/*, data demo disalin dari FE (seeder/demo)
+  seeder/            # index.ts (kosong + Owner), demo.ts (data demo), steps/*, demo/ disalin dari FE
 src/
   common/            # guard, decorator, serializers (DB → JSON FE), konstanta
   config/

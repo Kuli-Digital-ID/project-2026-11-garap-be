@@ -13,5 +13,7 @@ export default registerAs('app', () => ({
   rateLimitPerMinute: parseInt(process.env.RATE_LIMIT_PER_MINUTE ?? '300', 10),
   /** false | true | jumlah hop proxy | daftar IP/subnet — diteruskan ke Express "trust proxy". */
   trustProxy: process.env.TRUST_PROXY ?? 'false',
+  /** Rahasia bersama dengan proxy /api di FE (GARAP_PROXY_SECRET); kosong = fitur mati. */
+  proxySecret: process.env.PROXY_SECRET || '',
   frontendUrl: (process.env.FRONTEND_URL || 'http://localhost:3000').replace(/\/$/, ''),
 }));

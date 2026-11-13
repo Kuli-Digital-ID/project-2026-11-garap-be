@@ -26,6 +26,8 @@ export const validationSchema = Joi.object({
   RATE_LIMIT_PER_MINUTE: Joi.number().integer().min(10).default(300),
   AUTH_RATE_LIMIT_PER_MINUTE: Joi.number().integer().min(1).default(10),
   TRUST_PROXY: Joi.string().default('false'),
+  // Sama dengan GARAP_PROXY_SECRET di FE: IP asli pengguna diteruskan oleh proxy /api FE. Minimal 24 karakter.
+  PROXY_SECRET: Joi.string().min(24).allow('').optional(),
 
   // API
   API_PREFIX: Joi.string().default('api'),

@@ -31,6 +31,9 @@ import { RequestsModule } from './modules/requests/requests.module';
 import { DocsModule } from './modules/docs/docs.module';
 import { ContentModule } from './modules/content/content.module';
 import { WorkspaceModule } from './modules/workspace/workspace.module';
+import { RealtimeModule } from './modules/realtime/realtime.module';
+import { RealtimeInterceptor } from './modules/realtime/realtime.interceptor';
+import { ChatModule } from './modules/chat/chat.module';
 
 @Module({
   imports: [
@@ -64,6 +67,8 @@ import { WorkspaceModule } from './modules/workspace/workspace.module';
     DocsModule,
     ContentModule,
     WorkspaceModule,
+    RealtimeModule,
+    ChatModule,
     HealthModule,
   ],
   providers: [
@@ -95,6 +100,11 @@ import { WorkspaceModule } from './modules/workspace/workspace.module';
     {
       provide: APP_INTERCEPTOR,
       useClass: TransformInterceptor,
+    },
+    // Paling dalam: membaca hasil mentah handler, lalu mengumumkan perubahan ke klien yang terhubung.
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: RealtimeInterceptor,
     },
   ],
 })

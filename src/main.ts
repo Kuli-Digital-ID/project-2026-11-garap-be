@@ -5,6 +5,7 @@ import { NestFactory, Reflector } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import cookieParser = require('cookie-parser');
 import helmet from 'helmet';
+import { NextFunction, Request, Response } from 'express';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
@@ -19,6 +20,20 @@ async function bootstrap() {
   // Di belakang reverse proxy (nginx, Cloudflare): IP asli & HTTPS terbaca dari header X-Forwarded-*.
   const trustProxy = configService.get<string>('app.trustProxy') ?? 'false';
   app.set('trust proxy', trustProxy === 'true' ? true : trustProxy === 'false' ? false : /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy);
+
+  // FE Garap meneruskan /api/* ke sini (proxy di Worker Cloudflare). Semua request lalu tampak berasal dari IP Cloudflare,
+  // jadi proxy mengirim IP asli pengguna + rahasia bersama. IP itu dipakai batas login per IP & log audit.
+  const proxySecret = configService.get<string>('app.proxySecret');
+  if (proxySecret) {
+    app.use((req: Request, _res: Response, next: NextFunction) => {
+      const ip = req.headers['x-garap-client-ip'];
+      if (typeof ip === 'string' && ip && req.headers['x-garap-proxy-secret'] === proxySecret && /^[0-9a-fA-F:.]{3,45}$/.test(ip)) {
+        Object.defineProperty(req, 'ip', { value: ip, configurable: true });
+      }
+      delete req.headers['x-garap-proxy-secret'];
+      next();
+    });
+  }
 
   // Header keamanan. Gambar/PDF lampiran boleh ditampilkan FE di domain lain (tetap butuh cookie login).
   app.use(

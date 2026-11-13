@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '@common/prisma/prisma.service';
 import { notificationInclude, toNotification } from '@common/serializers';
+import { RealtimeBus } from '@modules/realtime/realtime.bus';
 
 export interface NotifyInput {
   recipientIds: (number | null | undefined)[];
@@ -14,7 +15,10 @@ export interface NotifyInput {
 
 @Injectable()
 export class NotificationsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private bus: RealtimeBus,
+  ) {}
 
   /** Kirim notifikasi ke beberapa penerima (pelaku tidak menerima notifikasinya sendiri). */
   async notify(n: NotifyInput) {
@@ -31,6 +35,8 @@ export class NotificationsService {
         project_slug: n.project,
       })),
     });
+    // Beri tahu penerima yang sedang terhubung agar lonceng & kotak masuk langsung diperbarui.
+    this.bus.publish({ type: 'notification', data: { kind: n.kind }, to: { users: ids } });
   }
 
   /** Cari @username di teks lalu kembalikan id user-nya. */

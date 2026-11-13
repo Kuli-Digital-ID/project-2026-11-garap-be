@@ -3,11 +3,15 @@ name: Deploy Garap Backend
 on:
   push:
     branches: [ "main" ]
-  # Actions › Deploy Garap Backend › Run workflow: deploy by hand, optionally with demo data.
+  # Actions › Deploy Garap Backend › Run workflow: deploy by hand, optionally resetting the database.
   workflow_dispatch:
     inputs:
       seed:
-        description: "Isi ulang data demo (MENGHAPUS semua data di database)"
+        description: "Kosongkan database: MENGHAPUS semua data, hanya akun Owner (secret OWNER_*) yang tersisa"
+        type: boolean
+        default: false
+      demo:
+        description: "Isi data demo (MENGHAPUS semua data di database)"
         type: boolean
         default: false
 
@@ -81,16 +85,26 @@ jobs:
               --env-file .owner.env \
               garap-be:latest \
               npm run prisma:init:prod || echo "⚠️  Owner belum dibuat: isi secret OWNER_EMAIL, OWNER_NAME, OWNER_PASSWORD"
-            rm -f .owner.env
 
-            # Demo data only when asked (Run workflow › seed): the seeder wipes every table.
-            if [ "${{ github.event.inputs.seed }}" = "true" ]; then
+            # Hanya bila diminta (Run workflow › seed / demo): kedua seeder MENGHAPUS semua tabel.
+            # seed = database kosong + akun Owner dari secret OWNER_* (default: bhagaskuro); demo = data demo.
+            if [ "${{ github.event.inputs.demo }}" = "true" ]; then
               podman run --rm \
                 --network=host \
                 --env-file .env \
+                -e SEED_CONFIRM=yes \
+                garap-be:latest \
+                npm run prisma:seed:demo:prod
+            elif [ "${{ github.event.inputs.seed }}" = "true" ]; then
+              podman run --rm \
+                --network=host \
+                --env-file .env \
+                --env-file .owner.env \
+                -e SEED_CONFIRM=yes \
                 garap-be:latest \
                 npm run prisma:seed:prod
             fi
+            rm -f .owner.env
 
             podman stop garap-be 2>/dev/null || true
             podman rm garap-be 2>/dev/null || true

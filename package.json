@@ -26,12 +26,14 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "prisma:seed": "ts-node prisma/seeder/index.ts",
+    "prisma:seed:demo": "ts-node prisma/seeder/demo.ts",
     "prisma:init": "ts-node prisma/seeder/init.ts",
     "build:scripts": "tsc -p tsconfig.scripts.json",
     "prisma:deploy": "prisma migrate deploy",
     "start:migrate": "prisma migrate deploy && node dist/main",
     "prisma:init:prod": "node dist/scripts/prisma/seeder/init.js",
-    "prisma:seed:prod": "node dist/scripts/prisma/seeder/index.js"
+    "prisma:seed:prod": "node dist/scripts/prisma/seeder/index.js",
+    "prisma:seed:demo:prod": "node dist/scripts/prisma/seeder/demo.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1168.0",

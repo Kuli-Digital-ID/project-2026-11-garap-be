@@ -1,5 +1,5 @@
 {
-  "//": "Skrip yang ikut ke image produksi (tanpa ts-node): npm run prisma:init:prod / prisma:seed:prod",
+  "//": "Skrip yang ikut ke image produksi (tanpa ts-node): npm run prisma:init:prod / prisma:seed:prod / prisma:seed:demo:prod",
   "compilerOptions": {
     "module": "commonjs",
     "target": "ES2022",
@@ -13,6 +13,7 @@
   },
   "files": [
     "prisma/seeder/init.ts",
-    "prisma/seeder/index.ts"
+    "prisma/seeder/index.ts",
+    "prisma/seeder/demo.ts"
   ]
 }
