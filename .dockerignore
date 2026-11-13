@@ -1,0 +1,13 @@
+node_modules
+dist
+uploads
+.env
+.env.*
+!.env.example
+.git
+.github
+coverage
+test
+*.log
+tsconfig.tsbuildinfo
+.DS_Store

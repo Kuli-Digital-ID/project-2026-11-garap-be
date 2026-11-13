@@ -6,7 +6,7 @@
   "private": true,
   "license": "UNLICENSED",
   "scripts": {
-    "build": "npm run clean && nest build",
+    "build": "npm run clean && nest build && npm run build:scripts",
     "clean": "rm -rf dist tsconfig.tsbuildinfo",
     "copy-templates": "cp -r templates dist/",
     "dev": "ts-node src/cli.ts",
@@ -26,7 +26,12 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "prisma:seed": "ts-node prisma/seeder/index.ts",
-    "prisma:init": "ts-node prisma/seeder/init.ts"
+    "prisma:init": "ts-node prisma/seeder/init.ts",
+    "build:scripts": "tsc -p tsconfig.scripts.json",
+    "prisma:deploy": "prisma migrate deploy",
+    "start:migrate": "prisma migrate deploy && node dist/main",
+    "prisma:init:prod": "node dist/scripts/prisma/seeder/init.js",
+    "prisma:seed:prod": "node dist/scripts/prisma/seeder/index.js"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1168.0",
@@ -37,16 +42,20 @@
     "@nestjs/passport": "^11.0.5",
     "@nestjs/platform-express": "^11.1.27",
     "@nestjs/swagger": "^11.4.4",
-    "@prisma/adapter-pg": "^7.8.0",
-    "@prisma/client": "^7.8.0",
+    "@nestjs/throttler": "^6.7.1",
+    "@prisma/adapter-pg": "^7.10.1",
+    "@prisma/client": "^7.10.1",
     "bcrypt": "^6.0.0",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.15.1",
     "cookie-parser": "^1.4.7",
+    "dotenv": "^17.4.2",
+    "helmet": "^8.3.0",
     "joi": "^18.2.3",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
     "pg": "^8.22.0",
+    "prisma": "^7.10.1",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.2"
   },
@@ -69,7 +78,6 @@
     "eslint-plugin-prettier": "^5.5.6",
     "jest": "^30.4.2",
     "prettier": "^3.8.4",
-    "prisma": "^7.8.0",
     "source-map-support": "^0.5.21",
     "supertest": "^7.2.2",
     "ts-jest": "^29.4.11",
@@ -97,5 +105,8 @@
     ],
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"
+  },
+  "engines": {
+    "node": ">=22"
   }
 }

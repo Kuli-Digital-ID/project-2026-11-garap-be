@@ -2,6 +2,7 @@ import { Body, Controller, Get, HttpCode, HttpStatus, Ip, Post, Req, Res } from 
 import { ApiOperation, ApiTags } from '@nestjs/swagger';
 import { CookieOptions, Request, Response } from 'express';
 import { ConfigService } from '@nestjs/config';
+import { Throttle } from '@nestjs/throttler';
 import { Public } from '@common/decorators/public.decorator';
 import { GetUser } from '@common/decorators/get-user.decorator';
 import { AllowPendingPassword } from '@common/decorators/password-change.decorator';
@@ -12,6 +13,9 @@ import { LoginResponseDto, LogoutResponseDto, MeDto } from '../../core/dto/auth-
 import { JwtPayload } from '../../core/interfaces/jwt-payload.interface';
 
 export const SESSION_COOKIE = 'Authentication';
+
+/** Percobaan login / ganti password per IP per menit (AUTH_RATE_LIMIT_PER_MINUTE, bawaan 10). */
+const authLimit = { default: { ttl: 60_000, limit: () => parseInt(process.env.AUTH_RATE_LIMIT_PER_MINUTE ?? '10', 10) } };
 
 @ApiTags('Authentication')
 @Controller({ path: 'auth', version: '1' })
@@ -34,6 +38,8 @@ export class AuthController {
   @Public()
   @Post('login')
   @HttpCode(HttpStatus.OK)
+  // Per IP, di luar kunci akun (5x salah per akun). Mencegah menebak password banyak akun sekaligus.
+  @Throttle(authLimit)
   @ApiOperation({
     summary: 'Masuk dengan email + password',
     description:
@@ -58,6 +64,7 @@ export class AuthController {
 
   @Post('change-password')
   @HttpCode(HttpStatus.OK)
+  @Throttle(authLimit)
   @AllowPendingPassword()
   @ApiOperation({ summary: 'Ganti password sendiri. Sesi di perangkat lain berakhir; perangkat ini mendapat token baru.' })
   @ApiSuccessResponse(LoginResponseDto)

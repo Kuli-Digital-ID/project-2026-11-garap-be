@@ -1,0 +1,18 @@
+{
+  "//": "Skrip yang ikut ke image produksi (tanpa ts-node): npm run prisma:init:prod / prisma:seed:prod",
+  "compilerOptions": {
+    "module": "commonjs",
+    "target": "ES2022",
+    "outDir": "dist/scripts",
+    "rootDir": ".",
+    "esModuleInterop": true,
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "skipLibCheck": true,
+    "strict": false
+  },
+  "files": [
+    "prisma/seeder/init.ts",
+    "prisma/seeder/index.ts"
+  ]
+}

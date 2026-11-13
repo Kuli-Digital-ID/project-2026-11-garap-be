@@ -19,3 +19,4 @@ coverage/
 
 # lampiran yang diunggah
 /uploads/
+!.env.production.example

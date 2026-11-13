@@ -4,14 +4,30 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { NestFactory, Reflector } from '@nestjs/core';
 import { ConfigService } from '@nestjs/config';
 import cookieParser = require('cookie-parser');
+import helmet from 'helmet';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  // SIGTERM dari podman/docker → pekerja konten berhenti & koneksi database ditutup rapi.
+  app.enableShutdownHooks();
   // Cukup untuk logo perusahaan (data URL, maks. 512 KB).
   app.useBodyParser('json', { limit: '1mb' });
 
   const configService = app.get(ConfigService);
+
+  // Di belakang reverse proxy (nginx, Cloudflare): IP asli & HTTPS terbaca dari header X-Forwarded-*.
+  const trustProxy = configService.get<string>('app.trustProxy') ?? 'false';
+  app.set('trust proxy', trustProxy === 'true' ? true : trustProxy === 'false' ? false : /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy);
+
+  // Header keamanan. Gambar/PDF lampiran boleh ditampilkan FE di domain lain (tetap butuh cookie login).
+  app.use(
+    helmet({
+      crossOriginResourcePolicy: { policy: 'cross-origin' },
+      // Swagger UI memakai skrip & gaya inline; API sendiri hanya mengembalikan JSON/file.
+      contentSecurityPolicy: false,
+    }),
+  );
 
   // Get configurations
   const swaggerEnabled = configService.get<boolean>('swagger.enabled');

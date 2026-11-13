@@ -8,6 +8,8 @@ import jwtConfig from './config/jwt.config';
 import authConfig from './config/auth.config';
 import storageConfig from './config/storage.config';
 import { Module } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
+import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 
 // Common modules
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
@@ -39,6 +41,15 @@ import { WorkspaceModule } from './modules/workspace/workspace.module';
       load: [appConfig, databaseConfig, jwtConfig, authConfig, storageConfig, swaggerConfig],
     }),
 
+    // Batas request per IP (butuh TRUST_PROXY bila API di belakang nginx/Cloudflare agar IP asli terbaca)
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        throttlers: [{ name: 'default', ttl: 60_000, limit: config.get<number>('app.rateLimitPerMinute') ?? 300 }],
+        errorMessage: 'Terlalu banyak permintaan. Coba lagi sebentar lagi.',
+      }),
+    }),
+
     // Common modules
     PrismaModule,
 
@@ -56,7 +67,11 @@ import { WorkspaceModule } from './modules/workspace/workspace.module';
     HealthModule,
   ],
   providers: [
-    // Global guards
+    // Global guards (urutan penting: batas request dulu, baru cek login & izin)
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
     {
       provide: APP_GUARD,
       useClass: JwtAuthGuard,

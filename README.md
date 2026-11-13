@@ -126,6 +126,65 @@ Nama file: `{tanggal}-{jam}-{id acak}-{nama-asli-yang-dirapikan}`, mis.
 **Membuka file:** `attachment.url` → `GET /api/v1/attachments/:id/file`. File selalu lewat API (butuh sesi login, Tamu hanya proyeknya sendiri),
 jadi bucket boleh tetap privat. Gambar, PDF, dan video tampil langsung; tipe lain selalu diunduh.
 
+## Deploy (produksi)
+
+Deploy otomatis lewat GitHub Actions (`.github/workflows/deploy.yml`) setiap push ke `main`, sama seperti Kasha:
+kode di-upload ke VPS (`/home/dev/backend/garap-be`), `.env` ditulis dari secret, image di-build dengan Podman,
+migrasi diterapkan, lalu container `garap-be` dijalankan ulang dengan `--network=host` di **port 3001**.
+Database tidak ikut dibuat: pakai Postgres yang sudah ada di server (`127.0.0.1:5432`).
+
+| Alamat | |
+| --- | --- |
+| API | `https://garap.kulidigital.cloud` → reverse proxy ke `http://127.0.0.1:3001` |
+| FE | `https://garap.kulidigital.id` |
+| Health | `https://garap.kulidigital.cloud/api/v1/health` → `{"status":"ok","database":"ok"}` |
+
+### Sekali saja sebelum deploy pertama
+
+1. **Database:** buat database kosong `garap_db` di Postgres server (migrasi membuat tabelnya).
+2. **GitHub secrets** (Settings › Secrets and variables › Actions):
+
+   | Secret | Isi |
+   | --- | --- |
+   | `SSH_HOST`, `SSH_USER`, `SSH_KEY`, `SSH_PASSPHRASE` | Sama dengan repo Kasha (user `dev`) |
+   | `ENV_FILE` | Seluruh isi `.env.production.example` yang sudah diisi (secret: `openssl rand -base64 48`) |
+   | `OWNER_EMAIL`, `OWNER_NAME`, `OWNER_PASSWORD` | Akun Owner pertama. Dibuat hanya bila belum ada Owner; boleh dihapus setelah deploy pertama |
+
+3. **Reverse proxy** (Nginx Proxy Manager): host `garap.kulidigital.cloud` → `http://127.0.0.1:3001`, SSL aktif,
+   dan `client_max_body_size 25m;` (Advanced) agar unggahan lampiran tidak ditolak.
+
+### Data demo
+
+Actions › Deploy Garap Backend › Run workflow › centang **seed**. Ini **menghapus semua data** lalu mengisi data demo
+(semua akun manusia memakai password `password123`). Jangan dipakai setelah aplikasi dipakai sungguhan.
+
+### Perintah manual di server
+
+```bash
+cd /home/dev/backend/garap-be
+podman logs -f garap-be                                   # log API
+curl http://127.0.0.1:3001/api/v1/health
+podman run --rm --network=host --env-file .env garap-be:latest npx prisma migrate status
+```
+
+### Domain FE & API
+
+FE (`kulidigital.id`) dan API (`kulidigital.cloud`) berbeda situs, sehingga cookie login menjadi cookie lintas situs
+(`COOKIE_SAMESITE=none`, wajib HTTPS). Chrome menerimanya, tetapi **Safari dan Firefox memblokir cookie lintas situs secara bawaan**,
+sehingga login dari browser itu akan gagal. Dua cara mengatasinya:
+
+- **Disarankan:** FE meneruskan `https://garap.kulidigital.id/api/*` ke `https://garap.kulidigital.cloud/api/*` (route/proxy di Worker FE).
+  Browser hanya melihat satu situs, jadi set `COOKIE_SAMESITE=lax`, `COOKIE_DOMAIN=` kosong, dan `API_PUBLIC_URL=https://garap.kulidigital.id`.
+- Atau pindahkan API ke subdomain `kulidigital.id` (mis. `api.garap.kulidigital.id`) dengan `COOKIE_SAMESITE=lax`, `COOKIE_DOMAIN=.kulidigital.id`.
+
+### Pengaman yang aktif di produksi
+
+- Batas request per IP: 300/menit umum, 10/menit untuk login & ganti password (`429`). Ditambah kunci akun setelah 5x salah password.
+- Header keamanan (helmet), cookie sesi `HttpOnly` + `Secure`, CORS hanya untuk `CORS_ORIGIN`.
+- API menolak mulai bila `JWT_SECRET`/`JWT_REFRESH_SECRET` < 32 karakter, `CORS_ORIGIN` berisi `*`, atau `API_PUBLIC_URL` kosong.
+- Swagger mati kecuali `SWAGGER_ENABLED=true`. Body request tidak dicatat di log; di lokal, password/token/API key disamarkan.
+- `GET /api/v1/health` mengecek database (dipakai healthcheck container dan langkah akhir workflow deploy).
+
 ## Modul API
 
 | Modul | Isi |

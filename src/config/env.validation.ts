@@ -12,13 +12,20 @@ export const validationSchema = Joi.object({
   DATABASE_URL: Joi.string().required(),
 
   // JWT
-  JWT_SECRET: Joi.string().required(),
+  // Di produksi wajib panjang & acak: openssl rand -base64 48
+  JWT_SECRET: Joi.string().required().when('NODE_ENV', { is: 'production', then: Joi.string().min(32) }),
   JWT_EXPIRATION: Joi.string().default('7d'),
-  JWT_REFRESH_SECRET: Joi.string().required(),
+  JWT_REFRESH_SECRET: Joi.string().required().when('NODE_ENV', { is: 'production', then: Joi.string().min(32) }),
   JWT_REFRESH_EXPIRATION: Joi.string().default('30d'),
 
   // CORS: satu atau beberapa alamat FE dipisah koma
-  CORS_ORIGIN: Joi.string().default('http://localhost:3000'),
+  CORS_ORIGIN: Joi.string()
+    .default('http://localhost:3000')
+    .when('NODE_ENV', { is: 'production', then: Joi.string().pattern(/^[^*]+$/, 'tanpa *').required() }),
+  // Batas request per IP per menit (login: 10/menit). TRUST_PROXY=1 bila API di belakang satu reverse proxy.
+  RATE_LIMIT_PER_MINUTE: Joi.number().integer().min(10).default(300),
+  AUTH_RATE_LIMIT_PER_MINUTE: Joi.number().integer().min(1).default(10),
+  TRUST_PROXY: Joi.string().default('false'),
 
   // API
   API_PREFIX: Joi.string().default('api'),
@@ -51,7 +58,8 @@ export const validationSchema = Joi.object({
   AI_KEY_SECRET: Joi.string().min(16).required(),
 
   // Alamat publik API (untuk callback OAuth sosmed), mis. https://api-garap.kulidigital.id
-  API_PUBLIC_URL: Joi.string().uri().optional(),
+  // Wajib di produksi: dipakai untuk URL unduh lampiran, mis. https://api.garap.kulidigital.id
+  API_PUBLIC_URL: Joi.string().uri().when('NODE_ENV', { is: 'production', then: Joi.required(), otherwise: Joi.optional() }),
   // Pekerja latar konten (jadwal rutin, tayang terjadwal, statistik). false bila >1 instance.
   CONTENT_RUNNER: Joi.boolean().default(true),
 
@@ -72,6 +80,7 @@ export const validationSchema = Joi.object({
   TIKTOK_PRIVACY: Joi.string().default('SELF_ONLY'),
 
   // Swagger
-  SWAGGER_ENABLED: Joi.boolean().default(true),
+  // Bawaan: aktif di lokal, mati di produksi
+  SWAGGER_ENABLED: Joi.boolean().allow('').optional(),
   SWAGGER_PATH: Joi.string().default('api-docs'),
 });
