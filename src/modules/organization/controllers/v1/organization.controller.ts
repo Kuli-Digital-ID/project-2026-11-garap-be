@@ -144,6 +144,13 @@ export class AgentsController {
   update(@GetUser() u: JwtPayload, @Param('username') username: string, @Body() dto: UpdateAgentDto) {
     return this.org.updateAgent(u, username, dto);
   }
+
+  @Delete(':username')
+  @Permissions(PERMISSIONS.AGENT.MANAGE)
+  @ApiOperation({ summary: 'Hapus agent (riwayat tetap tersimpan, tugas yang antre dibatalkan)' })
+  remove(@GetUser() u: JwtPayload, @Param('username') username: string) {
+    return this.org.removeAgent(u, username);
+  }
 }
 
 @ApiTags('Access')

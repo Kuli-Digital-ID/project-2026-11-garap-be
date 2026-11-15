@@ -274,6 +274,26 @@ export class OrganizationService {
     return toAgent(row);
   }
 
+  /** Hapus agent (soft delete): riwayat tiket, komentar, dan run tetap utuh; username dibebaskan agar bisa dipakai lagi. */
+  async removeAgent(actor: JwtPayload, username: string) {
+    const current = await this.prisma.user.findFirst({ where: { username, kind: 'agent', deleted_at: null } });
+    if (!current) throw new NotFoundException('Agent tidak ditemukan');
+    await this.prisma.$transaction([
+      this.prisma.user.update({
+        where: { id: current.id },
+        data: {
+          is_active: false, deleted_at: new Date(), status: 'offline', token_version: { increment: 1 },
+          username: `${current.username}~hapus${current.id}`, email: `hapus${current.id}.${current.email}`,
+        },
+      }),
+      this.prisma.projectMember.deleteMany({ where: { user_id: current.id } }),
+      this.prisma.agentJob.updateMany({ where: { agent_id: current.id, status: { in: ['queued', 'running'] } }, data: { status: 'failed', error: 'Agent dihapus', locked_at: null } }),
+      this.prisma.agentProfile.updateMany({ where: { supervisor_id: current.id }, data: { supervisor_id: null } }),
+    ]);
+    await this.audit.log(actor.userId, 'menghapus agent', current.display_name, 'akses');
+    return { deleted: true };
+  }
+
   async updateAgent(actor: JwtPayload, username: string, dto: UpdateAgentDto) {
     const current = await this.prisma.user.findFirst({ where: { username, kind: 'agent', deleted_at: null } });
     if (!current) throw new NotFoundException('Agent tidak ditemukan');
