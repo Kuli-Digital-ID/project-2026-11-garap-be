@@ -4,7 +4,7 @@ import { PrismaService } from '@common/prisma/prisma.service';
 import { AiProviderId } from '@common/constants/domain.constant';
 import { JwtPayload } from '@modules/auth/core/interfaces/jwt-payload.interface';
 import { AiProvidersService } from '@modules/ai/ai-providers.service';
-import { AgentMessage, ContentBlock, ProviderError, chat, chatWithTools } from '@modules/ai/core/helpers/provider-clients';
+import { AgentMessage, ContentBlock, PROVIDER_INFO, ProviderError, chat, chatWithTools, failureMarkdown } from '@modules/ai/core/helpers/provider-clients';
 import { TicketsService } from '@modules/tickets/tickets.service';
 import { DocsService } from '@modules/docs/docs.service';
 import { ProjectsService } from '@modules/projects/projects.service';
@@ -118,6 +118,7 @@ export class AgentRuntime implements OnModuleInit, OnModuleDestroy {
     let cost = 0;
     let model = '';
     let agentName = 'Agent';
+    let providerLabel = '';
     let agentUserId = job.agent_id;
     let supervisorId: number | null = null;
     try {
@@ -128,6 +129,7 @@ export class AgentRuntime implements OnModuleInit, OnModuleDestroy {
       const profile = agent?.agent_profile;
       if (!agent || !profile) return await this.finish(job, 'failed', 'Agent tidak aktif atau profilnya tidak ada');
       agentName = agent.display_name;
+      providerLabel = PROVIDER_INFO[profile.provider as AiProviderId]?.name ?? profile.provider;
       agentUserId = agent.id;
       supervisorId = profile.supervisor_id;
       const me: JwtPayload = {
@@ -192,7 +194,7 @@ export class AgentRuntime implements OnModuleInit, OnModuleDestroy {
       const system = await this.systemPrompt(agent.display_name, agent.role, profile, job);
       const touched = { commented: false };
       let finalText = '';
-      if (profile.provider === 'anthropic') {
+      if (profile.provider !== 'google') {
         const msgs: AgentMessage[] = [{ role: 'user', content: userPrompt }];
         for (let i = 0; i < MAX_STEPS; i++) {
           const turn = await chatWithTools(creds, model, system, msgs, TOOL_SPECS);
@@ -252,9 +254,9 @@ export class AgentRuntime implements OnModuleInit, OnModuleDestroy {
         });
         return;
       }
-      await this.alert(job, agentUserId, supervisorId, 'gagal bekerja', msg).catch(() => undefined);
+      await this.alert(job, agentUserId, supervisorId, e instanceof ProviderError && e.info ? `gagal bekerja: ${e.info.title.toLowerCase()}` : 'gagal bekerja', msg).catch(() => undefined);
       const asMe = await this.payloadOf(agentUserId).catch(() => null);
-      if (asMe) await this.replyIfChat(asMe, job, `⚠️ Maaf, saya gagal memproses ini: ${cut(msg, 300)}`).catch(() => undefined);
+      if (asMe) await this.replyIfChat(asMe, job, failureMarkdown({ agentName, providerName: providerLabel, model, error: e })).catch(() => undefined);
       await this.finish(job, 'failed', msg, runCode);
     }
   }

@@ -152,6 +152,9 @@ export class TicketsService {
     const parentId = await this.parentId(project.id, null, dto.parentKey);
 
     const ticket = await this.prisma.$transaction(async (tx) => {
+      // Penghitung bisa tertinggal dari nomor tiket yang sudah ada (data awal, tiket dihapus, dll.): sejajarkan dulu, baru naikkan.
+      const top = await tx.ticket.aggregate({ where: { project_id: project.id }, _max: { number: true } });
+      await tx.$executeRaw`UPDATE projects SET ticket_seq = GREATEST(ticket_seq, ${top._max.number ?? 0}) WHERE id = ${project.id}`;
       const { ticket_seq } = await tx.project.update({ where: { id: project.id }, data: { ticket_seq: { increment: 1 } }, select: { ticket_seq: true } });
       return tx.ticket.create({
         data: {

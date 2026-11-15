@@ -17,13 +17,80 @@ export interface ProviderInfo {
 export const PROVIDER_INFO: Record<AiProviderId, ProviderInfo> = {
   anthropic: { name: 'Anthropic', baseUrl: 'https://api.anthropic.com/v1', needsKey: true },
   google: { name: 'Google Gemini', baseUrl: 'https://generativelanguage.googleapis.com/v1beta', needsKey: true },
+  deepseek: { name: 'DeepSeek', baseUrl: 'https://api.deepseek.com/v1', needsKey: true },
+  qwen: { name: 'Alibaba Qwen', baseUrl: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1', needsKey: true },
+  moonshot: { name: 'Moonshot Kimi', baseUrl: 'https://api.moonshot.ai/v1', needsKey: true },
+  mistral: { name: 'Mistral', baseUrl: 'https://api.mistral.ai/v1', needsKey: true },
+  groq: { name: 'Groq', baseUrl: 'https://api.groq.com/openai/v1', needsKey: true },
   xai: { name: 'xAI Grok', baseUrl: 'https://api.x.ai/v1', needsKey: true },
   openai: { name: 'OpenAI', baseUrl: 'https://api.openai.com/v1', needsKey: true },
   openrouter: { name: 'OpenRouter', baseUrl: 'https://openrouter.ai/api/v1', needsKey: true },
   compatible: { name: 'Server sendiri (kompatibel OpenAI)', needsKey: false, needsBaseUrl: true },
 };
 
-export class ProviderError extends Error {}
+export interface ProviderErrorInfo {
+  status: number;
+  /** Judul pendek bahasa Indonesia, mis. "Saldo penyedia habis". */
+  title: string;
+  /** Langkah yang bisa dilakukan pengguna. */
+  hint?: string;
+  /** Pesan asli dari penyedia (sudah dirapikan). */
+  detail: string;
+}
+
+export class ProviderError extends Error {
+  constructor(message: string, readonly info?: ProviderErrorInfo) {
+    super(message);
+  }
+}
+
+/** Ambil pesan inti dari badan galat penyedia (JSON gaya OpenAI/Anthropic/Google) dan klasifikasikan. */
+export function parseProviderError(status: number, raw: string): ProviderErrorInfo {
+  let msg = raw;
+  try {
+    const j = JSON.parse(raw);
+    const e = Array.isArray(j) ? j[0]?.error : j.error;
+    msg = (typeof e === 'string' ? e : e?.message) ?? j.message ?? raw;
+  } catch { /* bukan JSON: pakai apa adanya */ }
+  const detail = String(msg).replace(/\s+/g, ' ').trim().slice(0, 240);
+  const low = detail.toLowerCase();
+  if (/credit balance|insufficient|quota|billing|balance|exceeded your current/.test(low) || status === 402) {
+    return { status, detail, title: 'Saldo atau kuota penyedia habis', hint: 'Isi saldo di dashboard penyedia, atau pindahkan agent ini ke penyedia lain di halaman Agent.' };
+  }
+  if (status === 404 || /no longer available|not found|does not exist|deprecated|unknown model/.test(low)) {
+    return { status, detail, title: 'Model tidak tersedia untuk akunmu', hint: 'Ganti model agent ini di halaman Agent, lalu coba lagi.' };
+  }
+  if (status === 401 || status === 403) return { status, detail, title: 'API key ditolak', hint: 'Periksa atau ganti API key di Pengaturan → Penyedia AI.' };
+  if (status === 429) return { status, detail, title: 'Terlalu banyak permintaan', hint: 'Tunggu sebentar lalu coba lagi. Kalau terus berulang, kuota penyedia mungkin habis.' };
+  if (status >= 500) return { status, detail, title: 'Penyedia sedang bermasalah', hint: 'Biasanya sementara. Coba lagi beberapa menit lagi.' };
+  return { status, detail, title: 'Permintaan ditolak penyedia', hint: status === 400 ? 'Periksa pengaturan model agent ini.' : undefined };
+}
+
+/** Versi teks satu baris (untuk log dan pengujian koneksi). */
+export function explainProviderError(status: number, raw: string): string {
+  const i = parseProviderError(status, raw);
+  return `Penyedia membalas ${status}: ${i.detail}${i.hint ? ` → ${i.hint}` : ''}`;
+}
+
+/** Pesan galat untuk dibaca pengguna di percakapan (mendukung **tebal**, `kode`, dan daftar). */
+export function failureMarkdown(opts: { agentName: string; providerName?: string; model?: string; error: unknown }): string {
+  const e = opts.error;
+  const who = [opts.providerName, opts.model].filter(Boolean).join(' · ');
+  if (e instanceof ProviderError && e.info) {
+    const i = e.info;
+    return [
+      `⚠️ **${opts.agentName} belum bisa mengerjakan ini**`,
+      `**${i.title}.**${who ? ` (${who})` : ''}`,
+      ...(i.hint ? ['', `**Yang bisa dilakukan**`, `- ${i.hint}`] : []),
+      '',
+      `**Detail teknis**`,
+      `- Kode: \`${i.status}\``,
+      `- Pesan penyedia: ${i.detail}`,
+    ].join('\n');
+  }
+  const detail = (e instanceof Error ? e.message : String(e)).replace(/\s+/g, ' ').trim().slice(0, 240);
+  return [`⚠️ **${opts.agentName} belum bisa mengerjakan ini**`, '', `**Detail teknis**`, `- ${detail}`].join('\n');
+}
 
 const TIMEOUT = 15_000;
 
@@ -63,9 +130,8 @@ export async function listModels(c: ProviderCredentials): Promise<string[]> {
       const j = await getJson(`${base}/models`, bearer);
       return (j.data ?? []).map((m: { id: string }) => m.id);
     }
-    case 'xai':
-    case 'openai':
-    case 'compatible': {
+    default: {
+      // OpenAI dan semua penyedia berformat sama (DeepSeek, Qwen, Kimi, Mistral, Groq, xAI, server sendiri).
       const j = await getJson(`${base}/models`, bearer);
       return (j.data ?? []).map((m: { id: string }) => m.id);
     }
@@ -86,7 +152,10 @@ async function postJson(url: string, headers: Record<string, string>, body: unkn
     throw new ProviderError(`Tidak bisa menghubungi ${new URL(url).host}: ${(e as Error).message}`);
   }
   if (res.status === 401 || res.status === 403) throw new ProviderError('API key ditolak penyedia');
-  if (!res.ok) throw new ProviderError(`Penyedia membalas ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  if (!res.ok) {
+    const raw = await res.text();
+    throw new ProviderError(explainProviderError(res.status, raw), parseProviderError(res.status, raw));
+  }
   return res.json() as Promise<any>;
 }
 
@@ -167,7 +236,8 @@ export async function chatWithTools(
   tools: ToolSpec[],
   maxTokens = 3000,
 ): Promise<ToolTurn> {
-  if (c.provider !== 'anthropic') throw new ProviderError('Alat agent saat ini hanya tersedia untuk Anthropic');
+  if (c.provider === 'google') throw new ProviderError('Alat agent belum tersedia untuk Gemini. Pakai Anthropic, DeepSeek, Qwen, Kimi, OpenAI, atau penyedia berformat OpenAI lain.');
+  if (c.provider !== 'anthropic') return chatWithToolsOpenAI(c, model, system, messages, tools, maxTokens);
   const base = (c.baseUrl || PROVIDER_INFO.anthropic.baseUrl || '').replace(/\/$/, '');
   let lastErr: unknown;
   // Ulangi sebentar untuk kelebihan beban (429/529) dan galat jaringan.
@@ -197,6 +267,62 @@ export async function chatWithTools(
       lastErr = e;
       const msg = e instanceof Error ? e.message : '';
       if (!/ 429| 529| 5\d\d|Tidak bisa menghubungi/.test(msg)) throw e;
+      await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+    }
+  }
+  throw lastErr;
+}
+
+/** Penyedia berformat OpenAI: terjemahkan pesan & alat gaya Anthropic ke chat/completions dan kembali. */
+async function chatWithToolsOpenAI(c: ProviderCredentials, model: string, system: string, messages: AgentMessage[], tools: ToolSpec[], maxTokens: number): Promise<ToolTurn> {
+  const base = (c.baseUrl || PROVIDER_INFO[c.provider].baseUrl || '').replace(/\/$/, '');
+  const out: Record<string, unknown>[] = [{ role: 'system', content: system }];
+  for (const m of messages) {
+    if (typeof m.content === 'string') {
+      out.push({ role: m.role, content: m.content });
+    } else if (m.role === 'assistant') {
+      const text = m.content.filter((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text').map((b) => b.text).join('\n');
+      const calls = m.content.filter((b): b is Extract<ContentBlock, { type: 'tool_use' }> => b.type === 'tool_use')
+        .map((b) => ({ id: b.id, type: 'function', function: { name: b.name, arguments: JSON.stringify(b.input ?? {}) } }));
+      out.push({ role: 'assistant', content: text || null, ...(calls.length ? { tool_calls: calls } : {}) });
+    } else {
+      for (const b of m.content) {
+        if (b.type === 'tool_result') out.push({ role: 'tool', tool_call_id: b.tool_use_id, content: b.content });
+        else if (b.type === 'text') out.push({ role: 'user', content: b.text });
+      }
+    }
+  }
+  const limit = c.provider === 'openai' ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens };
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const j = await postJson(`${base}/chat/completions`, c.apiKey ? { Authorization: `Bearer ${c.apiKey}` } : {}, {
+        model, ...limit, messages: out,
+        tools: tools.map((t) => ({ type: 'function', function: { name: t.name, description: t.description, parameters: t.input_schema } })),
+      }, 180_000);
+      const choice = j.choices?.[0];
+      const msg = choice?.message ?? {};
+      const content: ContentBlock[] = [];
+      if (msg.content) content.push({ type: 'text', text: String(msg.content) });
+      for (const tc of msg.tool_calls ?? []) {
+        let input: Record<string, unknown> = {};
+        try { input = JSON.parse(tc.function?.arguments || '{}'); } catch { /* argumen rusak: biarkan kosong, alat akan menolaknya */ }
+        content.push({ type: 'tool_use', id: String(tc.id), name: String(tc.function?.name), input });
+      }
+      const cached = j.usage?.prompt_cache_hit_tokens ?? j.usage?.prompt_tokens_details?.cached_tokens ?? 0;
+      return {
+        content,
+        stopReason: msg.tool_calls?.length ? 'tool_use' : choice?.finish_reason === 'length' ? 'max_tokens' : 'end_turn',
+        // prompt_tokens sudah termasuk bagian yang di-cache; pisahkan agar biaya tidak terhitung dua kali.
+        tokensIn: Math.max(0, (j.usage?.prompt_tokens ?? 0) - cached),
+        tokensOut: j.usage?.completion_tokens ?? 0,
+        cacheRead: cached,
+        cacheWrite: 0,
+      };
+    } catch (e) {
+      lastErr = e;
+      const msg = e instanceof Error ? e.message : '';
+      if (!/ 429| 5\d\d|Tidak bisa menghubungi/.test(msg)) throw e;
       await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
     }
   }

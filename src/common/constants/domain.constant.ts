@@ -45,7 +45,7 @@ export const WORKFLOW_TEMPLATES: Record<(typeof PROJECT_TEMPLATES)[number], { co
   ],
 };
 
-export const AI_PROVIDERS = ['anthropic', 'google', 'xai', 'openai', 'openrouter', 'compatible'] as const;
+export const AI_PROVIDERS = ['anthropic', 'google', 'deepseek', 'qwen', 'moonshot', 'mistral', 'groq', 'xai', 'openai', 'openrouter', 'compatible'] as const;
 export type AiProviderId = (typeof AI_PROVIDERS)[number];
 
 export const SOCIAL_PLATFORMS = ['youtube', 'instagram', 'facebook', 'tiktok', 'linkedin', 'x'] as const;

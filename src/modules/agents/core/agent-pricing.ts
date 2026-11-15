@@ -6,6 +6,16 @@ const DEFAULT: Record<string, Price> = {
   haiku: { in: 0.1, out: 0.5 },
   sonnet: { in: 2, out: 10 },
   opus: { in: 4, out: 20 },
+  // PERKIRAAN kasar penyedia lain (cek tarif resmi; timpa lewat AGENT_PRICE_USD_PER_MTOK). Hanya untuk estimasi anggaran.
+  deepseek: { in: 0.3, out: 0.5 },
+  qwen: { in: 0.4, out: 1.2 },
+  kimi: { in: 0.6, out: 2.5 },
+  moonshot: { in: 0.6, out: 2.5 },
+  mistral: { in: 0.4, out: 2 },
+  llama: { in: 0.1, out: 0.3 },
+  gpt: { in: 1, out: 8 },
+  grok: { in: 2, out: 10 },
+  gemini: { in: 0.3, out: 2.5 },
 };
 
 function priceFor(model: string): Price {

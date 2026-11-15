@@ -385,6 +385,8 @@ export class ContentService {
       const label = `${HARI[dow]} ${Number(date.slice(8))} ${BULAN[Number(date.slice(5, 7)) - 1]}`;
       try {
         await this.prisma.$transaction(async (tx) => {
+          const top = await tx.ticket.aggregate({ where: { project_id: s.project_id }, _max: { number: true } });
+          await tx.$executeRaw`UPDATE projects SET ticket_seq = GREATEST(ticket_seq, ${top._max.number ?? 0}) WHERE id = ${s.project_id}`;
           const { ticket_seq } = await tx.project.update({ where: { id: s.project_id }, data: { ticket_seq: { increment: 1 } }, select: { ticket_seq: true } });
           const reporter = s.created_by ?? s.project.lead_id ?? s.assignee_id;
           if (!reporter) throw new Error('Jadwal tanpa pembuat/lead');
