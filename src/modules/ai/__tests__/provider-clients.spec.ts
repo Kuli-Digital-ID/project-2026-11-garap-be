@@ -56,8 +56,31 @@ describe('penyedia berformat OpenAI', () => {
     }
   });
 
-  it('Gemini ditolak jelas untuk alat agent', async () => {
-    await expect(chatWithTools({ provider: 'google', apiKey: 'k' }, 'gemini-2.5-flash', 's', [], [])).rejects.toThrow('belum tersedia untuk Gemini');
+  it('menerjemahkan alat & hasil alat ke format Gemini dan kembali', async () => {
+    const calls: any[] = [];
+    const realFetch = global.fetch;
+    global.fetch = jest.fn(async (_url: any, init: any) => {
+      calls.push(JSON.parse(init.body));
+      return new Response(JSON.stringify({
+        candidates: [{ content: { parts: [{ functionCall: { name: 'get_planning', args: { project: 'IDER' } }, thoughtSignature: 'sig1' }] }, finishReason: 'STOP' }],
+        usageMetadata: { promptTokenCount: 10, candidatesTokenCount: 5 },
+      }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }) as any;
+    try {
+      const tools = [{ name: 'get_planning', description: 'd', input_schema: { type: 'object', additionalProperties: false, properties: { project: { type: 'string' } }, required: ['project'] } }];
+      const msgs: any[] = [
+        { role: 'user', content: 'halo' },
+        { role: 'assistant', content: [{ type: 'tool_use', id: 'x1', name: 'get_planning', input: { project: 'IDER' }, sig: 'old' }] },
+        { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'x1', content: 'ok' }] },
+      ];
+      const r = await chatWithTools({ provider: 'google', apiKey: 'k' }, 'gemini-2.5-flash', 's', msgs, tools);
+      expect(r.stopReason).toBe('tool_use');
+      expect(r.content[0]).toMatchObject({ type: 'tool_use', name: 'get_planning', input: { project: 'IDER' }, sig: 'sig1' });
+      const body = calls[0];
+      expect(JSON.stringify(body.tools)).not.toContain('additionalProperties');
+      expect(body.contents[1].parts[0]).toMatchObject({ functionCall: { name: 'get_planning' }, thoughtSignature: 'old' });
+      expect(body.contents[2].parts[0].functionResponse).toMatchObject({ name: 'get_planning', response: { result: 'ok' } });
+    } finally { global.fetch = realFetch; }
   });
 });
 

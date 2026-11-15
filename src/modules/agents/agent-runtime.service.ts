@@ -195,7 +195,7 @@ export class AgentRuntime implements OnModuleInit, OnModuleDestroy {
       const system = await this.systemPrompt(agent.display_name, agent.role, profile, job);
       const touched = { commented: false };
       let finalText = '';
-      if (profile.provider !== 'google') {
+      if (!(profile.provider === 'google' && /gemma/i.test(model))) {
         const msgs: AgentMessage[] = [{ role: 'user', content: userPrompt }];
         for (let i = 0; i < MAX_STEPS; i++) {
           const turn = await chatWithTools(creds, model, system, msgs, TOOL_SPECS);

@@ -210,7 +210,7 @@ export interface ToolSpec {
 
 export type ContentBlock =
   | { type: 'text'; text: string }
-  | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown> }
+  | { type: 'tool_use'; id: string; name: string; input: Record<string, unknown>; sig?: string }
   | { type: 'tool_result'; tool_use_id: string; content: string; is_error?: boolean };
 
 export interface AgentMessage {
@@ -236,7 +236,7 @@ export async function chatWithTools(
   tools: ToolSpec[],
   maxTokens = 3000,
 ): Promise<ToolTurn> {
-  if (c.provider === 'google') throw new ProviderError('Alat agent belum tersedia untuk Gemini. Pakai Anthropic, DeepSeek, Qwen, Kimi, OpenAI, atau penyedia berformat OpenAI lain.');
+  if (c.provider === 'google') return chatWithToolsGoogle(c, model, system, messages, tools, maxTokens);
   if (c.provider !== 'anthropic') return chatWithToolsOpenAI(c, model, system, messages, tools, maxTokens);
   const base = (c.baseUrl || PROVIDER_INFO.anthropic.baseUrl || '').replace(/\/$/, '');
   let lastErr: unknown;
@@ -274,6 +274,77 @@ export async function chatWithTools(
 }
 
 /** Penyedia berformat OpenAI: terjemahkan pesan & alat gaya Anthropic ke chat/completions dan kembali. */
+/** Skema JSON → subset OpenAPI yang diterima Gemini (buang kata kunci yang tidak didukung). */
+function geminiSchema(n: unknown): unknown {
+  if (Array.isArray(n)) return n.map(geminiSchema);
+  if (!n || typeof n !== 'object') return n;
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(n as Record<string, unknown>)) {
+    if (['additionalProperties', '$schema', 'default', 'examples', 'title'].includes(k)) continue;
+    out[k] = geminiSchema(v);
+  }
+  return out;
+}
+
+/** Gemini: function calling (Anthropic-format ↔ Gemini). Tidak untuk model Gemma (tanpa function calling). */
+async function chatWithToolsGoogle(c: ProviderCredentials, model: string, system: string, messages: AgentMessage[], tools: ToolSpec[], maxTokens: number): Promise<ToolTurn> {
+  const base = (c.baseUrl || PROVIDER_INFO.google.baseUrl || '').replace(/\/$/, '');
+  const names = new Map<string, string>();
+  const contents: Record<string, unknown>[] = [];
+  for (const m of messages) {
+    if (typeof m.content === 'string') { contents.push({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] }); continue; }
+    if (m.role === 'assistant') {
+      const parts: Record<string, unknown>[] = [];
+      for (const b of m.content) {
+        if (b.type === 'text' && b.text) parts.push({ text: b.text });
+        else if (b.type === 'tool_use') { names.set(b.id, b.name); parts.push({ functionCall: { name: b.name, args: b.input ?? {} }, ...(b.sig ? { thoughtSignature: b.sig } : {}) }); }
+      }
+      if (parts.length) contents.push({ role: 'model', parts });
+    } else {
+      const parts: Record<string, unknown>[] = [];
+      for (const b of m.content) {
+        if (b.type === 'tool_result') parts.push({ functionResponse: { name: names.get(b.tool_use_id) ?? 'tool', response: b.is_error ? { error: b.content } : { result: b.content } } });
+        else if (b.type === 'text') parts.push({ text: b.text });
+      }
+      if (parts.length) contents.push({ role: 'user', parts });
+    }
+  }
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const j = await postJson(`${base}/models/${encodeURIComponent(model)}:generateContent`, { 'x-goog-api-key': c.apiKey! }, {
+        systemInstruction: { parts: [{ text: system }] },
+        contents,
+        tools: [{ functionDeclarations: tools.map((t) => ({ name: t.name, description: t.description, parameters: geminiSchema(t.input_schema) })) }],
+        generationConfig: { maxOutputTokens: maxTokens },
+      }, 180_000);
+      const cand = j.candidates?.[0];
+      const content: ContentBlock[] = [];
+      let n = 0;
+      for (const p of cand?.content?.parts ?? []) {
+        if (p.thought) continue;
+        if (p.functionCall) content.push({ type: 'tool_use', id: `g${Date.now().toString(36)}${n++}`, name: String(p.functionCall.name), input: p.functionCall.args ?? {}, ...(p.thoughtSignature ? { sig: String(p.thoughtSignature) } : {}) });
+        else if (typeof p.text === 'string' && p.text) content.push({ type: 'text', text: p.text });
+      }
+      const used = content.some((b) => b.type === 'tool_use');
+      return {
+        content,
+        stopReason: used ? 'tool_use' : cand?.finishReason === 'MAX_TOKENS' ? 'max_tokens' : 'end_turn',
+        tokensIn: j.usageMetadata?.promptTokenCount ?? 0,
+        tokensOut: (j.usageMetadata?.candidatesTokenCount ?? 0) + (j.usageMetadata?.thoughtsTokenCount ?? 0),
+        cacheRead: 0,
+        cacheWrite: 0,
+      };
+    } catch (e) {
+      lastErr = e;
+      const msg = e instanceof Error ? e.message : '';
+      if (!/ 429| 5\d\d|Tidak bisa menghubungi/.test(msg)) throw e;
+      await new Promise((r) => setTimeout(r, 2000 * (attempt + 1)));
+    }
+  }
+  throw lastErr;
+}
+
 async function chatWithToolsOpenAI(c: ProviderCredentials, model: string, system: string, messages: AgentMessage[], tools: ToolSpec[], maxTokens: number): Promise<ToolTurn> {
   const base = (c.baseUrl || PROVIDER_INFO[c.provider].baseUrl || '').replace(/\/$/, '');
   const out: Record<string, unknown>[] = [{ role: 'system', content: system }];

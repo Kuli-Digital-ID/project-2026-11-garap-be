@@ -20,3 +20,13 @@ describe('persona', () => {
     expect(plainChat('## Judul\n**tebal** teks')).toBe('Judul\ntebal teks');
   });
 });
+
+describe('stripReasoning model kecil', () => {
+  it('mengambil jawaban terakhir dari monolog panjang', () => {
+    const raw = '"Siap, saya coba lagi ya."\n\nWait, looking at the previous turn:\n\nloli: "Oke"\n\nBhagas: "ulangi lagi"\n\nLoli should say:\n\n"Siap, oke jalan."\n\n(Keep it simple, 1-4 sentences, no markdown).\n\nWait, if I am the PM, I should do it.\n\nIf I am an AI agent, I would:\n1. Call get_planning\n\nSiap, saya cek dulu perencanaan di proyek ider terus langsung saya buatkan task-nya.';
+    expect(stripReasoning(raw)).toBe('Siap, saya cek dulu perencanaan di proyek ider terus langsung saya buatkan task-nya.');
+  });
+  it('kalimat Indonesia biasa tetap utuh', () => {
+    expect(stripReasoning('Siap.\n\nSaya cek dulu ya, nanti kabari.')).toBe('Siap.\n\nSaya cek dulu ya, nanti kabari.');
+  });
+});

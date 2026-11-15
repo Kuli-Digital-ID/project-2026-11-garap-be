@@ -73,7 +73,15 @@ export function stripReasoning(raw: string): string {
       t = paras.join('\n\n');
     }
   }
-  return t.trim();
+  t = t.trim();
+  // Model kecil yang "berpikir keras": ada paragraf meta (Wait, Actually, Final check, (Keep…), "X should say") → ambil paragraf jawaban terakhir.
+  const metaPara = /^\W*(?:Wait|Actually|Hmm|Okay,? so|Let's|Let me|Final check|Since I|If I (?:am|were)|I (?:will|should|need|am just|shouldn't)|\(?Keep it|\(Error|Draft|Option|Check|Note:|One more thing|However|But since|Without|Based on)|\bshould say\b|^\w+:\s*["“]/i;
+  const paras = t.split(/\n{2,}|\n(?=\W*(?:Wait|Actually|Final check|Hmm)\b)/).map((x) => x.trim()).filter(Boolean);
+  if (paras.length > 1 && paras.some((x) => metaPara.test(x) || /\b(?:the user|previous turn|tool calls?|I am (?:the|an?) )\b/i.test(x))) {
+    const clean = [...paras].reverse().find((x) => !metaPara.test(x) && !/\b(?:the user|previous turn|tool calls?|I am (?:the|an?)|persona|instructions?)\b/i.test(x) && !/^[\d.\-*)\s]*(?:Call|Create|Send|Based)\b/.test(x));
+    if (clean) t = clean.replace(/^["“]([\s\S]*)["”]$/, '$1').trim();
+  }
+  return t;
 }
 
 /** Ratakan format "robot" (heading, tebal) untuk balasan chat. */
