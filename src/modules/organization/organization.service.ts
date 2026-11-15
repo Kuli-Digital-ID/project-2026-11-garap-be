@@ -6,6 +6,8 @@ import { agentInclude, divisionInclude, memberInclude, toAgent, toDivision, toMe
 import { JwtPayload } from '@modules/auth/core/interfaces/jwt-payload.interface';
 import { AuditService } from '@modules/activity/audit.service';
 import { AiProvidersService } from '@modules/ai/ai-providers.service';
+import { chat } from '@modules/ai/core/helpers/provider-clients';
+import { PersonaInput, fallbackPersona, personaGeneratorPrompt, plainChat, stripReasoning } from '@modules/agents/core/persona';
 import {
   CreateAgentDto, CreateDivisionDto, CreateMemberDto, MemberQueryDto, ResetPasswordDto, UpdateAgentDto, UpdateDivisionDto, UpdateMemberDto, UpdateMyProfileDto,
 } from './core/dto/organization.dto';
@@ -271,7 +273,37 @@ export class OrganizationService {
       include: agentInclude,
     });
     await this.audit.log(actor.userId, 'membuat agent', dto.name, 'agent');
-    return toAgent(row);
+    // Kepribadian dibuat otomatis (LLM milik agent sendiri; cadangan templat bila gagal) — tidak menggagalkan perekrutan.
+    await this.buildPersona(row.id, { name: dto.name, role: dto.role, skills: dto.skills, description: dto.description }, dto.provider, dto.modelId).catch(() => undefined);
+    const fresh = await this.prisma.user.findUnique({ where: { id: row.id }, include: agentInclude });
+    return toAgent(fresh ?? row);
+  }
+
+  /** Buat (ulang) kepribadian agent. Mengembalikan teks yang disimpan. */
+  async buildPersona(userId: number, input: PersonaInput, provider: string, modelId: string) {
+    let text = '';
+    try {
+      const creds = await this.ai.credentials(provider as never);
+      const g = personaGeneratorPrompt(input);
+      const r = await Promise.race([
+        chat(creds, modelId, g.system, g.prompt, 400),
+        new Promise<never>((_, rej) => setTimeout(() => rej(new Error('timeout')), 20000)),
+      ]);
+      text = plainChat(stripReasoning(r.text)).slice(0, 1200);
+      if (text.length < 40) text = '';
+    } catch { /* pakai cadangan */ }
+    if (!text) text = fallbackPersona(input);
+    await this.prisma.agentProfile.update({ where: { user_id: userId }, data: { persona: text } });
+    return text;
+  }
+
+  async regeneratePersona(actor: JwtPayload, username: string) {
+    const u = await this.prisma.user.findFirst({ where: { username, kind: 'agent', deleted_at: null }, include: agentInclude });
+    if (!u?.agent_profile) throw new NotFoundException('Agent tidak ditemukan');
+    const p = u.agent_profile;
+    await this.buildPersona(u.id, { name: u.display_name, role: u.role, skills: p.skills, description: p.description }, p.provider, p.model_id ?? p.model);
+    await this.audit.log(actor.userId, 'membuat ulang kepribadian', u.display_name, 'agent');
+    return toAgent((await this.prisma.user.findUnique({ where: { id: u.id }, include: agentInclude }))!);
   }
 
   /** Hapus agent (soft delete): riwayat tiket, komentar, dan run tetap utuh; username dibebaskan agar bisa dipakai lagi. */
@@ -314,6 +346,7 @@ export class OrganizationService {
             model_id: dto.modelId,
             model: dto.model ?? dto.modelId,
             description: dto.description,
+            persona: dto.persona,
             skills: dto.skills,
             budget: dto.budget,
             current_task: dto.currentTask,

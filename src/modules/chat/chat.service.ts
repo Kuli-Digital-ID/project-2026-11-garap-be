@@ -160,8 +160,13 @@ export class ChatService {
   }
 
   async remove(user: JwtPayload, id: number) {
-    const { conv } = await this.load(user, id);
-    if (!this.canManage(user, conv)) throw new ForbiddenException('Hanya pembuat kanal, Admin, atau Owner yang bisa menghapus kanal');
+    const { conv, member } = await this.load(user, id);
+    if (conv.kind === 'dm') {
+      // DM hanya boleh dihapus anggotanya, dan hanya bila lawan bicaranya agent atau akun yang sudah dihapus (agar riwayat sesama manusia tidak hilang sepihak).
+      const others = conv.members.filter((m) => m.user_id !== user.userId);
+      const ok = member && others.every((m) => m.user.kind === 'agent' || m.user.deleted_at);
+      if (!ok) throw new ForbiddenException('Percakapan dengan sesama anggota tidak bisa dihapus');
+    } else if (!this.canManage(user, conv)) throw new ForbiddenException('Hanya pembuat kanal, Admin, atau Owner yang bisa menghapus kanal');
     await this.prisma.conversation.delete({ where: { id } });
     this.channelChanged(conv, conv.members.map((m) => m.user_id), { removed: true });
     return { deleted: String(id) };

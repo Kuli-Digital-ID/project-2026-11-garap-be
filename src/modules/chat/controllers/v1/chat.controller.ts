@@ -36,7 +36,7 @@ export class ChatController {
   }
 
   @Delete(':id')
-  @ApiOperation({ summary: 'Hapus kanal beserta pesannya' })
+  @ApiOperation({ summary: 'Hapus kanal (atau DM dengan agent) beserta pesannya' })
   remove(@GetUser() user: JwtPayload, @Param('id', ParseIntPipe) id: number) {
     return this.service.remove(user, id);
   }

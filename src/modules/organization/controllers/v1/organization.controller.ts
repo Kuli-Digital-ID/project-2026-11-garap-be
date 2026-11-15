@@ -145,6 +145,13 @@ export class AgentsController {
     return this.org.updateAgent(u, username, dto);
   }
 
+  @Post(':username/persona')
+  @Permissions(PERMISSIONS.AGENT.MANAGE)
+  @ApiOperation({ summary: 'Buat ulang kepribadian agent secara otomatis' })
+  persona(@GetUser() u: JwtPayload, @Param('username') username: string) {
+    return this.org.regeneratePersona(u, username);
+  }
+
   @Delete(':username')
   @Permissions(PERMISSIONS.AGENT.MANAGE)
   @ApiOperation({ summary: 'Hapus agent (riwayat tetap tersimpan, tugas yang antre dibatalkan)' })

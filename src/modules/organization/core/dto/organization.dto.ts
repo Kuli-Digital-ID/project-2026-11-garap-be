@@ -81,6 +81,7 @@ export class UpdateAgentDto {
   @ApiPropertyOptional({ example: 'grok-4' }) @IsOptional() @IsString() @MinLength(1) modelId?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() model?: string;
   @ApiPropertyOptional() @IsOptional() @IsString() description?: string;
+  @ApiPropertyOptional({ description: 'Kepribadian & gaya bicara' }) @IsOptional() @IsString() @MaxLength(2000) persona?: string;
   @ApiPropertyOptional({ type: [String] }) @IsOptional() @IsArray() @IsString({ each: true }) skills?: string[];
   @ApiPropertyOptional() @IsOptional() @Type(() => Number) @IsInt() @Min(0) budget?: number;
   @ApiPropertyOptional() @IsOptional() @IsString() supervisorId?: string;

@@ -60,6 +60,7 @@ export const toAgent = (u: AgentRow) => {
           modelId: a.model_id ?? undefined,
           model: a.model,
           description: a.description,
+          persona: a.persona,
           skills: a.skills,
           budget: a.budget,
           spent: a.spent,

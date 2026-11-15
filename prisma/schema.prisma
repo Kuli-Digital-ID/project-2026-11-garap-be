@@ -163,6 +163,8 @@ model AgentProfile {
   provider      String   @default("anthropic")
   /// Id model di API penyedia, mis. "gemini-2.5-pro".
   model_id      String?
+  /// Profil kepribadian & gaya bicara (dibuat otomatis saat agent direkrut).
+  persona       String   @default("")
   /// Nama model yang tampil, mis. "Gemini 2.5 Pro".
   model         String
   description   String   @default("")

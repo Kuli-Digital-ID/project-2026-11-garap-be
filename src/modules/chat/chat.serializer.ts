@@ -2,7 +2,7 @@ import { Prisma } from '@prisma/client';
 
 export const conversationInclude = {
   project: { select: { slug: true } },
-  members: { select: { user_id: true, last_read_id: true, user: { select: { username: true, display_name: true, role: true, kind: true } } } },
+  members: { select: { user_id: true, last_read_id: true, user: { select: { username: true, display_name: true, role: true, kind: true, deleted_at: true } } } },
 } satisfies Prisma.ConversationInclude;
 
 export type ConversationRow = Prisma.ConversationGetPayload<{ include: typeof conversationInclude }>;
@@ -32,6 +32,7 @@ export const toConversation = (c: ConversationRow, meId: number, unread = 0, las
     project: c.project?.slug ?? undefined,
     isPrivate: c.is_private,
     dmWith: other?.user.username,
+    dmGone: other ? !!other.user.deleted_at : undefined,
     joined: c.members.some((m) => m.user_id === meId),
     unread,
     createdBy: undefined as string | undefined,
