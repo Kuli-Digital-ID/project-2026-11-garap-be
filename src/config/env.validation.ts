@@ -36,6 +36,16 @@ export const validationSchema = Joi.object({
   // Alamat FE (tujuan redirect setelah menghubungkan akun sosmed)
   FRONTEND_URL: Joi.string().uri().default('http://localhost:3000'),
 
+  // Email notifikasi (opsional). Kosongkan MAIL_HOST untuk mematikan. Contoh Brevo/Gmail: host smtp, port 587, user + password SMTP.
+  MAIL_HOST: Joi.string().allow('').optional(),
+  MAIL_PORT: Joi.number().integer().default(587),
+  MAIL_SECURE: Joi.boolean().default(false),
+  MAIL_USER: Joi.string().allow('').optional(),
+  MAIL_PASS: Joi.string().allow('').optional(),
+  MAIL_FROM: Joi.string().allow('').optional(),
+  // Pengingat tenggat tiket (cek tiap 30 menit). false = matikan di instance ini.
+  REMINDER_RUNNER: Joi.boolean().default(true),
+
   // Login email + password
   AUTH_MAX_FAILED_LOGINS: Joi.number().integer().min(1).default(5),
   AUTH_LOCK_MINUTES: Joi.number().integer().min(1).default(15),

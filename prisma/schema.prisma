@@ -41,6 +41,8 @@ model User {
   last_login_at DateTime?
   joined_at     DateTime  @default(now())
   is_active     Boolean   @default(true)
+  /// Preferensi notifikasi: { inapp: { mention: true, ... }, email: { ... } }. Kosong = bawaan.
+  notif_prefs   Json?
   created_at    DateTime  @default(now())
   updated_at    DateTime  @updatedAt
   deleted_at    DateTime?
@@ -590,17 +592,20 @@ model Notification {
   id           Int       @id @default(autoincrement())
   recipient_id Int
   actor_id     Int?
-  kind         String // mention | assign | approval | agent | comment | status
+  kind         String // mention | assign | approval | agent | comment | status | due
   text         String
   target       String?
   href         String    @default("/")
   project_slug String?
+  /// Kunci anti-ganda (mis. pengingat tenggat): satu kunci hanya sekali per penerima.
+  dedupe_key   String?
   read_at      DateTime?
   created_at   DateTime  @default(now())
 
   recipient User  @relation("NotificationRecipient", fields: [recipient_id], references: [id], onDelete: Cascade)
   actor     User? @relation("NotificationActor", fields: [actor_id], references: [id], onDelete: SetNull)
 
+  @@unique([recipient_id, dedupe_key])
   @@index([recipient_id, read_at])
   @@map("notifications")
 }

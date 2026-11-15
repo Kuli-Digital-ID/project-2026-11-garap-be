@@ -223,6 +223,36 @@ Semua request lewat proxy tampak berasal dari IP Cloudflare. Agar batas login pe
 isi `PROXY_SECRET` di BE dan secret Worker `GARAP_PROXY_SECRET` di FE dengan nilai yang sama (`openssl rand -base64 32`).
 Tanpa itu aplikasi tetap jalan; hanya pencatatan IP yang kurang akurat.
 
+### Checklist produksi (jangan dilewati)
+
+1. **Rahasia proxy IP:** isi `PROXY_SECRET` di `ENV_FILE` (BE) dan secret Worker `GARAP_PROXY_SECRET` di FE dengan nilai sama
+   (`openssl rand -base64 32`). Tanpa ini batas login per IP dan log audit melihat semua orang berasal dari IP Cloudflare.
+2. **Cookie:** `COOKIE_SAMESITE=lax` dan `COOKIE_DOMAIN` kosong selama FE memakai proxy `/api` (lihat bagian Domain FE & API).
+3. **Email:** isi `MAIL_HOST`, `MAIL_PORT`, `MAIL_USER`, `MAIL_PASS`, `MAIL_FROM` (SMTP apa saja; lihat `.env.production.example`).
+   Cek di Pengaturan › Notifikasi › *Kirim email uji*. Tanpa SMTP, notifikasi tetap muncul di dalam aplikasi.
+   Pengingat tenggat berjalan tiap 30 menit pada jam 07.00–20.00 zona waktu workspace; matikan dengan `REMINDER_RUNNER=false`.
+4. **Firewall:** port API `3001` hanya perlu bisa diakses reverse proxy (`127.0.0.1`). Jangan buka `3001`/`4001`/`5432` ke publik.
+5. **Ganti kredensial yang pernah terbuka** (password akun demo/Owner, `JWT_*`, kunci API AI, kunci S3) bila pernah ditempel di chat/ticket.
+6. **SSE (notifikasi realtime):** di Nginx Proxy Manager aktifkan *Websockets Support* dan tambahkan di Advanced
+   `proxy_buffering off; proxy_read_timeout 3600s;` agar `/api/v1/events` tidak terputus.
+7. **Cadangan:** pasang cron `scripts/backup-db.sh` (lihat bawah) dan sesekali uji pulihkan ke database kosong.
+
+### Cadangan database
+
+```bash
+# di VPS sebagai user dev (butuh pg_dump: apt install postgresql-client)
+mkdir -p /home/dev/backups/garap
+crontab -e   # tambahkan:
+15 2 * * * /home/dev/backend/garap-be/scripts/backup-db.sh >> /home/dev/backups/garap/backup.log 2>&1
+```
+
+Skrip menyimpan dump `.sql.gz` harian (14 hari terakhir) dan arsip lampiran tiap Minggu. Pulihkan:
+`gunzip -c garap-db-YYYYmmdd-HHMM.sql.gz | psql "$DATABASE_URL"` ke database kosong. Salin folder cadangan juga ke luar VPS (mis. `rclone`).
+
+### Tes otomatis
+
+`npm test` menjalankan tes unit (pengingat tenggat, preferensi notifikasi, ekspor CSV). `npm run test:e2e` butuh database.
+
 ### Pengaman yang aktif di produksi
 
 - Batas request per IP: 300/menit umum, 10/menit untuk login & ganti password (`429`). Ditambah kunci akun setelah 5x salah password.

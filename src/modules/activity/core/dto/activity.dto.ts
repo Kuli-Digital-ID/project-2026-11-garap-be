@@ -1,6 +1,6 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type, Transform } from 'class-transformer';
-import { ArrayNotEmpty, IsArray, IsBoolean, IsIn, IsInt, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
+import { ArrayNotEmpty, IsArray, IsBoolean, IsIn, IsInt, IsObject, IsOptional, IsString, Max, MaxLength, Min } from 'class-validator';
 import { PaginationDto } from '@common/dto/pagination.dto';
 import { APPROVAL_KINDS, AUDIT_CATEGORIES, RISKS } from '@common/constants/domain.constant';
 
@@ -43,6 +43,18 @@ export class MarkReadDto {
   @IsArray()
   @IsInt({ each: true })
   ids?: number[];
+}
+
+export class NotificationPrefsDto {
+  @ApiPropertyOptional({ description: 'Di dalam aplikasi: { mention: true, comment: false, ... }' })
+  @IsOptional()
+  @IsObject()
+  inapp?: Record<string, boolean>;
+
+  @ApiPropertyOptional({ description: 'Email: { mention: true, comment: false, ... }' })
+  @IsOptional()
+  @IsObject()
+  email?: Record<string, boolean>;
 }
 
 export class ApprovalQueryDto {
