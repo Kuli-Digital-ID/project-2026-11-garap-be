@@ -455,6 +455,8 @@ model Attachment {
   id          Int      @id @default(autoincrement())
   ticket_id   Int?
   request_id  Int?
+  /// Lampiran pesan chat.
+  chat_message_id Int?
   name        String
   /// Ukuran dalam byte.
   size        Int      @default(0)
@@ -471,8 +473,10 @@ model Attachment {
 
   ticket   Ticket?      @relation(fields: [ticket_id], references: [id], onDelete: Cascade)
   request  WorkRequest? @relation(fields: [request_id], references: [id], onDelete: Cascade)
+  chat_message ChatMessage? @relation(fields: [chat_message_id], references: [id], onDelete: Cascade)
   uploader User         @relation(fields: [uploader_id], references: [id])
 
+  @@index([chat_message_id])
   @@map("attachments")
 }
 
@@ -853,6 +857,7 @@ model ChatMessage {
 
   conversation Conversation @relation(fields: [conversation_id], references: [id], onDelete: Cascade)
   author       User         @relation(fields: [author_id], references: [id], onDelete: Cascade)
+  attachments  Attachment[]
 
   @@index([conversation_id, id])
   @@map("chat_messages")
