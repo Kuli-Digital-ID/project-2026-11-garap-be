@@ -1,9 +1,11 @@
-import { Body, Controller, Delete, Get, HttpCode, Param, ParseIntPipe, Patch, Post, Query } from '@nestjs/common';
-import { ApiOperation, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseIntPipe, Patch, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { UploadedDiskFile } from '@modules/files/files.service';
+import { ApiBody, ApiConsumes, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { GetUser } from '@common/decorators/get-user.decorator';
 import { JwtPayload } from '@modules/auth/core/interfaces/jwt-payload.interface';
 import { ChatService } from '../../chat.service';
-import { AddMembersDto, CreateChannelDto, DirectDto, EditMessageDto, MessagesQueryDto, ReadDto, SendMessageDto, UpdateChannelDto } from '../../core/dto/chat.dto';
+import { AddMembersDto, CreateChannelDto, DirectDto, EditMessageDto, MessagesQueryDto, ReadDto, SendFileDto, SendMessageDto, UpdateChannelDto } from '../../core/dto/chat.dto';
 
 @ApiTags('Percakapan')
 @Controller({ path: 'conversations', version: '1' })
@@ -65,6 +67,15 @@ export class ChatController {
   @ApiOperation({ summary: 'Pesan dalam kanal (terlama → terbaru); gunakan before untuk halaman sebelumnya' })
   messages(@GetUser() user: JwtPayload, @Param('id', ParseIntPipe) id: number, @Query() q: MessagesQueryDto) {
     return this.service.messages(user, id, q);
+  }
+
+  @Post(':id/messages/upload')
+  @UseInterceptors(FileInterceptor('file'))
+  @ApiConsumes('multipart/form-data')
+  @ApiBody({ schema: { type: 'object', required: ['file'], properties: { file: { type: 'string', format: 'binary' }, text: { type: 'string' } } } })
+  @ApiOperation({ summary: 'Kirim pesan dengan file (multipart: file + text opsional; batas UPLOAD_MAX_MB)' })
+  sendFile(@GetUser() user: JwtPayload, @Param('id', ParseIntPipe) id: number, @Body() dto: SendFileDto, @UploadedFile() file: UploadedDiskFile) {
+    return this.service.send(user, id, { text: dto.text }, file);
   }
 
   @Post(':id/messages')

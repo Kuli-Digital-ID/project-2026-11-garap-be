@@ -5,6 +5,7 @@ import { JwtPayload } from '@modules/auth/core/interfaces/jwt-payload.interface'
 import { isManager, projectScope } from '@common/helpers/access';
 import { NotificationsService } from '@modules/activity/notifications.service';
 import { enqueueAgentJobs } from '@modules/agents/core/agent-queue';
+import { FilesService, UploadedDiskFile } from '@modules/files/files.service';
 import { RealtimeBus } from '@modules/realtime/realtime.bus';
 import { AddMembersDto, CreateChannelDto, MessagesQueryDto, SendMessageDto, UpdateChannelDto } from './core/dto/chat.dto';
 import { ConversationRow, conversationInclude, messageInclude, toConversation, toMessage } from './chat.serializer';
@@ -24,6 +25,7 @@ export class ChatService {
     private prisma: PrismaService,
     private notifications: NotificationsService,
     private bus: RealtimeBus,
+    private files: FilesService,
   ) {}
 
   private isGuest = (u: JwtPayload) => u.positionName === 'Tamu';
@@ -167,7 +169,9 @@ export class ChatService {
       const ok = member && others.every((m) => m.user.kind === 'agent' || m.user.deleted_at);
       if (!ok) throw new ForbiddenException('Percakapan dengan sesama anggota tidak bisa dihapus');
     } else if (!this.canManage(user, conv)) throw new ForbiddenException('Hanya pembuat kanal, Admin, atau Owner yang bisa menghapus kanal');
+    const atts = await this.prisma.attachment.findMany({ where: { chat_message: { conversation_id: id } }, select: { storage: true, storage_key: true } });
     await this.prisma.conversation.delete({ where: { id } });
+    for (const a of atts) await this.files.removeStored(a);
     this.channelChanged(conv, conv.members.map((m) => m.user_id), { removed: true });
     return { deleted: String(id) };
   }
@@ -227,17 +231,33 @@ export class ChatService {
     return { kind, title: String(card.title ?? '').slice(0, 200), sub: String(card.sub ?? '').slice(0, 200), ...(href ? { href } : {}) };
   }
 
-  async send(user: JwtPayload, id: number, dto: SendMessageDto) {
-    const { conv, member } = await this.load(user, id);
-    const text = dto.text.trim();
-    if (!text) throw new BadRequestException('Pesan tidak boleh kosong');
+  async send(user: JwtPayload, id: number, dto: { text?: string; card?: Record<string, unknown> }, file?: UploadedDiskFile) {
+    let loaded;
+    try { loaded = await this.load(user, id); } catch (e) { await this.files.discard(file); throw e; }
+    const { conv, member } = loaded;
+    const typed = (dto.text ?? '').trim();
+    if (!typed && !file) throw new BadRequestException('Pesan tidak boleh kosong');
+    const text = typed;
     // Mengirim ke kanal publik otomatis bergabung.
     if (!member) await this.prisma.conversationMember.create({ data: { conversation_id: id, user_id: user.userId } }).catch(() => undefined);
 
-    const msg = await this.prisma.chatMessage.create({
+    let msg = await this.prisma.chatMessage.create({
       data: { conversation_id: id, author_id: user.userId, body: text, card: (this.cleanCard(dto.card) as Prisma.InputJsonValue) ?? undefined },
       include: messageInclude,
     });
+    let fileName = '';
+    if (file) {
+      try {
+        const att = await this.files.attachChat(user, file, msg.id, id);
+        fileName = att.name;
+        msg = (await this.prisma.chatMessage.findUnique({ where: { id: msg.id }, include: messageInclude }))!;
+      } catch (e) {
+        await this.prisma.chatMessage.delete({ where: { id: msg.id } }).catch(() => undefined);
+        await this.files.discard(file);
+        throw e;
+      }
+    }
+    const promptText = text || `(mengirim file: ${fileName})`;
     await this.prisma.conversation.update({ where: { id }, data: { last_message_at: msg.created_at } });
     await this.prisma.conversationMember.updateMany({ where: { conversation_id: id, user_id: user.userId }, data: { last_read_id: msg.id } });
 
@@ -267,11 +287,11 @@ export class ChatService {
       target: text.length > 80 ? `${text.slice(0, 80)}…` : text,
       href: `/percakapan?c=${id}`,
       conversationId: id,
-      prompt: text,
+      prompt: promptText,
     });
     // Pesan langsung ke agent: agent membalas. (Di kanal, agent hanya merespons bila di-@mention.)
     if (conv.kind === 'dm') {
-      await enqueueAgentJobs(this.prisma, { userIds: memberIds, kind: 'dm', actorId: user.userId, conversationId: id, prompt: text }).catch(() => 0);
+      await enqueueAgentJobs(this.prisma, { userIds: memberIds, kind: 'dm', actorId: user.userId, conversationId: id, prompt: promptText }).catch(() => 0);
     }
     return message;
   }
@@ -299,6 +319,9 @@ export class ChatService {
     const msg = await this.ownMessage(user, id, mid);
     if (msg.author_id !== user.userId && !isManager(user)) throw new ForbiddenException('Hanya pengirim, Admin, atau Owner yang bisa menghapus pesan');
     await this.prisma.chatMessage.update({ where: { id: mid }, data: { deleted_at: new Date() } });
+    const atts = await this.prisma.attachment.findMany({ where: { chat_message_id: mid }, select: { storage: true, storage_key: true } });
+    await this.prisma.attachment.deleteMany({ where: { chat_message_id: mid } });
+    for (const a of atts) await this.files.removeStored(a);
     const members = await this.prisma.conversationMember.findMany({ where: { conversation_id: id }, select: { user_id: true } });
     this.bus.publish({ type: 'chat', data: { op: 'message.delete', conversationId: String(id), messageId: String(mid) }, to: { users: members.map((m) => m.user_id) } });
     return { deleted: String(mid) };

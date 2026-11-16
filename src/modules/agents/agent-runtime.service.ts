@@ -1,4 +1,5 @@
 import { HttpException, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { FilesService } from '@modules/files/files.service';
 import { NATURAL_STYLE, fallbackPersona, plainChat, stripReasoning } from './core/persona';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@common/prisma/prisma.service';
@@ -55,6 +56,7 @@ export class AgentRuntime implements OnModuleInit, OnModuleDestroy {
     private notifications: NotificationsService,
     private chatService: ChatService,
     private bus: RealtimeBus,
+    private files: FilesService,
   ) {}
 
   // ---------- siklus hidup ----------
@@ -297,9 +299,20 @@ export class AgentRuntime implements OnModuleInit, OnModuleDestroy {
     const who = actor ? `${actor.display_name} (@${actor.username})` : 'Seseorang';
     if (job.conversation_id) {
       const rows = await this.prisma.chatMessage.findMany({
-        where: { conversation_id: job.conversation_id, deleted_at: null }, orderBy: { id: 'desc' }, take: 20, include: { author: { select: { display_name: true, username: true } } },
+        where: { conversation_id: job.conversation_id, deleted_at: null }, orderBy: { id: 'desc' }, take: 20, include: { author: { select: { display_name: true, username: true } }, attachments: { select: { id: true, name: true, size: true } } },
       });
-      const transcript = rows.reverse().map((m) => `${m.author.display_name}: ${m.body}`).join('\n');
+      let budget = 60000; // total karakter isi file yang disertakan
+      const lines: string[] = [];
+      for (const m of rows.reverse()) {
+        let line = `${m.author.display_name}: ${m.body.length > 8000 ? `${m.body.slice(0, 8000)}… [dipotong]` : m.body}`.trimEnd();
+        for (const a of m.attachments) {
+          const t = budget > 0 ? await this.files.readText(a.id, Math.min(30000, budget)).catch(() => null) : null;
+          if (t) { budget -= t.text.length; line += `\n[Lampiran: ${t.name}${t.truncated ? ' (dipotong)' : ''}]\n${t.text}\n[Akhir lampiran]`; }
+          else line += `\n[Lampiran: ${a.name} — isi file tidak bisa dibaca agent (hanya file teks/markdown/csv/json); minta pengirim menempel teksnya bila perlu]`;
+        }
+        lines.push(line);
+      }
+      const transcript = lines.join('\n');
       return `Percakapan terakhir (paling bawah yang terbaru):\n\n${transcript}\n\nBalas pesan terakhir dari ${who} sebagai ${agentName}.`;
     }
     const ticket = ticketJson ? `\n\nTiket (JSON):\n${ticketJson}` : '';

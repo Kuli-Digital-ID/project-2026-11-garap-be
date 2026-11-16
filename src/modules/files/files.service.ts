@@ -79,6 +79,44 @@ export class FilesService {
     }
   }
 
+  /** Simpan file sebagai lampiran pesan chat. */
+  async attachChat(user: JwtPayload, file: UploadedDiskFile | undefined, messageId: number, conversationId: number) {
+    if (!file) throw new BadRequestException('Sertakan file pada field "file" (multipart/form-data)');
+    const name = Buffer.from(file.originalname, 'latin1').toString('utf8').replace(/[\\/]/g, '_').slice(0, 200) || 'file';
+    const mime = file.mimetype || 'application/octet-stream';
+    const kind = attachmentKind(name, mime);
+    const saved = await this.storage.put(file.path, mime, `percakapan/${conversationId}/${KIND_FOLDER[kind]}`, name);
+    try {
+      const row = await this.prisma.attachment.create({
+        data: { chat_message_id: messageId, name, size: file.size, kind, storage: saved.storage, storage_key: saved.key, mime, uploader_id: user.userId },
+        select: attachmentSelect,
+      });
+      return toAttachment(row);
+    } catch (e) {
+      await this.storage.remove(saved.storage, saved.key);
+      throw e;
+    }
+  }
+
+  /** Isi file teks (md, txt, csv, json, …) untuk dibaca agent; null bila bukan file teks. */
+  async readText(id: number, maxChars = 30000): Promise<{ name: string; text: string; truncated: boolean } | null> {
+    const a = await this.prisma.attachment.findUnique({ where: { id }, select: { name: true, mime: true, storage: true, storage_key: true, size: true } });
+    if (!a?.storage_key) return null;
+    const textual = (a.mime ?? '').startsWith('text/') || ['application/json', 'application/xml', 'application/x-yaml'].includes(a.mime ?? '') || /\.(md|markdown|txt|csv|tsv|json|ya?ml|xml|log|html?|sql|env|ini|toml|js|ts|tsx|jsx|py|java|go|rs|php|sh)$/i.test(a.name);
+    if (!textual) return null;
+    const { stream } = await this.storage.open(a.storage, a.storage_key);
+    const chunks: Buffer[] = [];
+    let got = 0;
+    const cap = maxChars * 4;
+    for await (const c of stream) {
+      const b = Buffer.isBuffer(c) ? c : Buffer.from(c);
+      chunks.push(b); got += b.length;
+      if (got >= cap) { (stream as { destroy?: () => void }).destroy?.(); break; }
+    }
+    const full = Buffer.concat(chunks).toString('utf8');
+    return { name: a.name, text: full.slice(0, maxChars), truncated: full.length > maxChars || a.size > got };
+  }
+
   /** Buang file sementara dari multer (request ditolak sebelum file disimpan). */
   async discard(file?: UploadedDiskFile) {
     await this.storage.removeTemp(file?.path);
@@ -96,9 +134,15 @@ export class FilesService {
       include: {
         ticket: { select: { deleted_at: true, project: { select: { members: { where: { user_id: user.userId }, select: { id: true } } } } } },
         request: { select: { requester_id: true } },
+        chat_message: { select: { deleted_at: true, conversation: { select: { kind: true, is_private: true, members: { where: { user_id: user.userId }, select: { id: true } } } } } },
       },
     });
-    if (!a || !a.storage_key || a.ticket?.deleted_at) throw new NotFoundException('Lampiran tidak ditemukan');
+    if (!a || !a.storage_key || a.ticket?.deleted_at || a.chat_message?.deleted_at) throw new NotFoundException('Lampiran tidak ditemukan');
+    if (a.chat_message) {
+      const c = a.chat_message.conversation;
+      const ok = c.members.length > 0 || (c.kind === 'channel' && !c.is_private && user.positionName !== 'Tamu');
+      if (!ok) throw new ForbiddenException('Anda tidak punya akses ke lampiran ini');
+    }
     if (user.positionName === 'Tamu') {
       const allowed = a.ticket ? a.ticket.project.members.length > 0 : a.request?.requester_id === user.userId;
       if (!allowed) throw new ForbiddenException('Anda tidak punya akses ke lampiran ini');

@@ -88,7 +88,7 @@ export class SendMessageDto {
   @ApiProperty({ example: 'Pagi semua! @raka tolong cek PNR-138 ya.' })
   @IsString()
   @MinLength(1)
-  @MaxLength(4000)
+  @MaxLength(20000)
   text: string;
 
   @ApiPropertyOptional({ example: { kind: 'ticket', title: 'PNR-135 · Dokumen requirement v1', sub: 'Review', href: '/proyek/pinarak/tiket/PNR-135' } })
@@ -101,8 +101,16 @@ export class EditMessageDto {
   @ApiProperty()
   @IsString()
   @MinLength(1)
-  @MaxLength(4000)
+  @MaxLength(20000)
   text: string;
+}
+
+export class SendFileDto {
+  @ApiPropertyOptional({ description: 'Teks pendamping (opsional)' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(20000)
+  text?: string;
 }
 
 export class ReadDto {

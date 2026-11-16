@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { attachmentSelect, toAttachment } from '@common/serializers';
 
 export const conversationInclude = {
   project: { select: { slug: true } },
@@ -7,7 +8,10 @@ export const conversationInclude = {
 
 export type ConversationRow = Prisma.ConversationGetPayload<{ include: typeof conversationInclude }>;
 
-export const messageInclude = { author: { select: { username: true } } } satisfies Prisma.ChatMessageInclude;
+export const messageInclude = {
+  author: { select: { username: true } },
+  attachments: { select: attachmentSelect, orderBy: { id: 'asc' } },
+} satisfies Prisma.ChatMessageInclude;
 export type MessageRow = Prisma.ChatMessageGetPayload<{ include: typeof messageInclude }>;
 
 export const toMessage = (m: MessageRow) => ({
@@ -18,6 +22,7 @@ export const toMessage = (m: MessageRow) => ({
   time: m.created_at.toISOString(),
   card: (m.card as unknown) ?? undefined,
   edited: !!m.edited_at,
+  attachments: m.attachments.map(toAttachment),
 });
 
 /** Bentuk kanal untuk FE; nama & topik DM mengikuti lawan bicara (dari sudut pandang `meId`). */
