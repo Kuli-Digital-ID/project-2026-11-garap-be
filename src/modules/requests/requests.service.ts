@@ -96,8 +96,10 @@ export class RequestsService {
       });
       return tx.workRequest.update({ where: { id: created.id }, data: { code: `REQ-${created.id}` } });
     });
+    // Ketua divisi bisa saja belum ditentukan: beri tahu ketua + seluruh anggota manusia divisi tujuan.
+    const staff = await this.prisma.user.findMany({ where: { division_id: division.id, kind: 'human', deleted_at: null }, select: { id: true } });
     await this.notifications.notify({
-      recipientIds: [division.lead_id], actorId: user.userId, kind: 'assign', text: `mengirim permintaan ke ${division.name}`, target: dto.title, href: '/permintaan',
+      recipientIds: [division.lead_id, ...staff.map((u) => u.id)], actorId: user.userId, kind: 'assign', text: `mengirim permintaan ke ${division.name}`, target: dto.title, href: '/permintaan',
     });
     return this.load(row.id);
   }
