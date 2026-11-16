@@ -47,6 +47,7 @@ export class CreateMemberDto {
 export class UpdateMemberDto extends PartialType(OmitType(CreateMemberDto, ['password'] as const)) {
   @ApiPropertyOptional({ enum: MEMBER_STATUSES }) @IsOptional() @IsIn(MEMBER_STATUSES) status?: string;
   @ApiPropertyOptional() @IsOptional() @IsBoolean() isActive?: boolean;
+  @ApiPropertyOptional({ description: 'Karakter 3D Office' }) @IsOptional() @IsObject() avatar?: Record<string, unknown>;
 }
 
 export class ResetPasswordDto {
@@ -58,6 +59,7 @@ export class UpdateMyProfileDto {
   @ApiPropertyOptional() @IsOptional() @IsString() @MaxLength(40) name?: string;
   @ApiPropertyOptional() @IsOptional() @IsHexColor() color?: string;
   @ApiPropertyOptional({ enum: MEMBER_STATUSES }) @IsOptional() @IsIn(MEMBER_STATUSES) status?: string;
+  @ApiPropertyOptional({ description: 'Karakter 3D Office' }) @IsOptional() @IsObject() avatar?: Record<string, unknown>;
 }
 
 export class CreateAgentDto {

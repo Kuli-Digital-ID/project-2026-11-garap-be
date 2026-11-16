@@ -1,6 +1,7 @@
 import { BadRequestException, ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '@common/prisma/prisma.service';
+import { sanitizeAvatar } from '@common/helpers/avatar';
 import { PasswordUtil } from '@common/utils/password.util';
 import { agentInclude, divisionInclude, memberInclude, toAgent, toDivision, toMember } from '@common/serializers';
 import { JwtPayload } from '@modules/auth/core/interfaces/jwt-payload.interface';
@@ -204,6 +205,7 @@ export class OrganizationService {
         color: dto.color,
         status: dto.status,
         is_active: dto.isActive,
+        ...(dto.avatar ? { avatar: sanitizeAvatar(dto.avatar) ?? Prisma.DbNull } : {}),
         division_id: await this.divisionId(dto.division),
         position_id: dto.access ? await this.positionId(dto.access) : undefined,
       },
@@ -217,7 +219,7 @@ export class OrganizationService {
   async updateMe(actor: JwtPayload, dto: UpdateMyProfileDto) {
     const row = await this.prisma.user.update({
       where: { id: actor.userId },
-      data: { display_name: dto.name, color: dto.color, status: dto.status },
+      data: { display_name: dto.name, color: dto.color, status: dto.status, ...(dto.avatar ? { avatar: sanitizeAvatar(dto.avatar) ?? Prisma.DbNull } : {}) },
       include: memberInclude,
     });
     return toMember(row);
@@ -229,7 +231,11 @@ export class OrganizationService {
     if (current.id === actor.userId) throw new BadRequestException('Anda tidak bisa menghapus akun sendiri');
     if (current.position.name === 'Owner') this.guardOwner(actor, 'Owner');
     // Soft delete: riwayat tiket & komentar tetap utuh.
-    await this.prisma.user.update({ where: { id: current.id }, data: { is_active: false, deleted_at: new Date(), token_version: { increment: 1 } } });
+    // Username & email bersifat unik: bebaskan agar orangnya bisa didaftarkan lagi.
+    await this.prisma.user.update({
+      where: { id: current.id },
+      data: { is_active: false, deleted_at: new Date(), token_version: { increment: 1 }, username: `${current.username}~hapus${current.id}`, email: `hapus${current.id}.${current.email}` },
+    });
     await this.prisma.projectMember.deleteMany({ where: { user_id: current.id } });
     await this.audit.log(actor.userId, 'menghapus anggota', current.display_name, 'akses');
     return { deleted: true };

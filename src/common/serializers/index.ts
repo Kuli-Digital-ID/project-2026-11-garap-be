@@ -28,6 +28,7 @@ export const toMember = (u: MemberRow) => ({
   division: u.division?.slug ?? null,
   initials: u.initials,
   color: u.color ?? undefined,
+  avatar: u.avatar ?? undefined,
   email: u.kind === 'agent' ? undefined : u.email,
   access: u.position.name,
   status: u.status,
