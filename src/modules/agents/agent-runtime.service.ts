@@ -14,10 +14,8 @@ import { ApprovalsService } from '@modules/activity/approvals.service';
 import { NotificationsService } from '@modules/activity/notifications.service';
 import { ChatService } from '@modules/chat/chat.service';
 import { RealtimeBus } from '@modules/realtime/realtime.bus';
-import { SKILL_TOOL_SPECS, TOOL_SPECS } from './core/agent-tools';
+import { TOOL_SPECS } from './core/agent-tools';
 import { costRupiah } from './core/agent-pricing';
-import { mergeSections } from './core/doc-merge';
-import { Skill, readSkill, readSkillReference, skillIndex, skillsFor } from './core/skills';
 
 interface Job {
   id: number;
@@ -33,15 +31,12 @@ interface Job {
 
 type Step = { t: string; kind: 'pikir' | 'tool' | 'hasil' | 'persetujuan' | 'galat'; title: string; detail?: string };
 
-const MAX_STEPS = Number(process.env.AGENT_MAX_STEPS) || 60;
+const MAX_STEPS = Number(process.env.AGENT_MAX_STEPS) || 30;
 const clock = () => new Date().toLocaleTimeString('en-GB', { timeZone: process.env.TZ || 'Asia/Jakarta' });
 const cut = (s: string, n = 12_000) => (s.length > n ? `${s.slice(0, n)}… [dipotong]` : s);
 const json = (v: unknown) => cut(JSON.stringify(v));
 
 /** Tugas yang gagal karena galat sementara (jaringan, kelebihan beban) dicoba lagi, selebihnya langsung gagal. */
-/** Alat yang mengubah data: bila ada yang sukses, pekerjaan dianggap menghasilkan sesuatu walau model tidak menulis ringkasan. */
-const WRITE_TOOLS = new Set(['comment_ticket', 'move_ticket', 'update_ticket', 'create_ticket', 'create_epic', 'update_epic', 'create_sprint', 'update_sprint', 'create_doc', 'update_doc', 'submit_doc_review', 'send_message', 'request_approval', 'save_learning']);
-
 const TRANSIENT = / 429| 529| 5\d\d|Tidak bisa menghubungi|timeout/i;
 
 @Injectable()
@@ -199,42 +194,23 @@ export class AgentRuntime implements OnModuleInit, OnModuleDestroy {
       if (job.conversation_id) await this.announceTyping(job.conversation_id, agent.username);
 
       // ---- Loop agent ----
-      const skills = skillsFor(agent.role, profile.skills);
-      const toolSpecs = skills.length ? [...TOOL_SPECS, ...SKILL_TOOL_SPECS] : TOOL_SPECS;
-      const system = await this.systemPrompt(agent.display_name, agent.role, profile, job, skills);
-      const touched = { commented: false, wrote: [] as string[] };
+      const system = await this.systemPrompt(agent.display_name, agent.role, profile, job);
+      const touched = { commented: false };
       let finalText = '';
       if (!(profile.provider === 'google' && /gemma/i.test(model))) {
         const msgs: AgentMessage[] = [{ role: 'user', content: userPrompt }];
-        const baseMax = Number(process.env.AGENT_MAX_TOKENS) || 16000;
-        let maxTokens = baseMax;
         for (let i = 0; i < MAX_STEPS; i++) {
-          const turn = await chatWithTools(creds, model, system, msgs, toolSpecs, maxTokens);
+          const turn = await chatWithTools(creds, model, system, msgs, TOOL_SPECS);
           usage.tokensIn += turn.tokensIn; usage.tokensOut += turn.tokensOut; usage.cacheRead += turn.cacheRead; usage.cacheWrite += turn.cacheWrite;
           cost = costRupiah(model, usage);
           const text = turn.content.filter((b): b is Extract<ContentBlock, { type: 'text' }> => b.type === 'text').map((b) => b.text).join('\n').trim();
-          // Batas token habis sebelum ada jawaban/alat (biasanya terpakai untuk berpikir): ulangi dengan batas lebih besar, jangan dianggap selesai.
-          if (turn.stopReason === 'max_tokens' && !turn.content.length) {
-            if (maxTokens >= baseMax * 2) throw new Error(`Model kehabisan batas token (${maxTokens}) sebelum menghasilkan jawaban. Naikkan AGENT_MAX_TOKENS atau pecah tugasnya.`);
-            maxTokens *= 2;
-            steps.push({ t: clock(), kind: 'galat', title: `Batas token habis sebelum menjawab, mengulang dengan batas ${maxTokens}` });
-            continue;
-          }
           if (text) steps.push({ t: clock(), kind: 'pikir', title: cut(text, 200), detail: text.length > 200 ? cut(text, 4000) : undefined });
           msgs.push({ role: 'assistant', content: turn.content });
           const uses = turn.content.filter((b): b is Extract<ContentBlock, { type: 'tool_use' }> => b.type === 'tool_use');
-          if (turn.stopReason === 'max_tokens' && !uses.length) {
-            // Jawaban terpotong: minta lanjut, sambungkan teksnya.
-            finalText = [finalText, text].filter(Boolean).join('\n');
-            if (maxTokens < baseMax * 2) maxTokens *= 2;
-            msgs.push({ role: 'user', content: 'Lanjutkan dari bagian yang terpotong. Jangan mengulang yang sudah ditulis.' });
-            continue;
-          }
-          if (turn.stopReason !== 'tool_use' || !uses.length) { finalText = [finalText, text].filter(Boolean).join('\n'); break; }
+          if (turn.stopReason !== 'tool_use' || !uses.length) { finalText = text; break; }
           const results: ContentBlock[] = [];
           for (const u of uses) {
-            const r = await this.runTool(me, agent.id, u.name, u.input, touched, skills);
-            if (!r.error && WRITE_TOOLS.has(u.name)) touched.wrote.push(this.describe(u.name, u.input));
+            const r = await this.runTool(me, agent.id, u.name, u.input, touched);
             steps.push({ t: clock(), kind: u.name === 'request_approval' ? 'persetujuan' : r.error ? 'galat' : 'tool', title: this.describe(u.name, u.input), detail: cut(r.out, 1500) });
             results.push({ type: 'tool_result', tool_use_id: u.id, content: r.out, ...(r.error ? { is_error: true } : {}) });
           }
@@ -258,18 +234,13 @@ export class AgentRuntime implements OnModuleInit, OnModuleDestroy {
       // ---- Hasil ----
       finalText = stripReasoning(finalText);
       if (job.conversation_id) finalText = plainChat(finalText);
-      if (!finalText) {
-        // Model tidak menulis ringkasan. Bila sudah ada perubahan tersimpan, ringkas dari langkahnya; bila tidak ada sama sekali, itu kegagalan, bukan "selesai".
-        if (touched.wrote.length) finalText = `Beres. ${[...new Set(touched.wrote)].slice(0, 12).join('; ')}.`;
-        else throw new Error('Agent selesai tanpa jawaban dan tanpa perubahan apa pun. Biasanya karena batas token habis atau model tidak memanggil alat; cek langkah run.');
-      }
       if (job.conversation_id) {
-        await this.chatService.send(me, job.conversation_id, { text: finalText });
+        await this.chatService.send(me, job.conversation_id, { text: finalText || 'Maaf, saya tidak punya jawaban untuk itu.' });
       } else if (job.ticket_key && finalText && !touched.commented) {
         await this.tickets.addComment(me, job.ticket_key, { text: finalText });
         this.announceTicket(me, job.ticket_key, projectSlug);
       }
-      steps.push({ t: clock(), kind: 'hasil', title: cut(finalText, 200), detail: finalText.length > 200 ? cut(finalText, 4000) : undefined });
+      steps.push({ t: clock(), kind: 'hasil', title: cut(finalText || 'Selesai', 200) });
       await this.record(agent.id, job.id, model, usage, cost);
       await this.closeRun(runId, 'berhasil', started, usage, cost, steps);
       await this.setIdle(agent.id, true);
@@ -296,7 +267,7 @@ export class AgentRuntime implements OnModuleInit, OnModuleDestroy {
 
   // ---------- konteks & prompt ----------
 
-  private async systemPrompt(name: string, role: string, p: { description: string; persona?: string; skills: string[]; learnings: Prisma.JsonValue; budget: number }, job: Job, skills: Skill[] = []) {
+  private async systemPrompt(name: string, role: string, p: { description: string; persona?: string; skills: string[]; learnings: Prisma.JsonValue; budget: number }, job: Job) {
     const ws = await this.prisma.workspace.findFirst({ select: { name: true } });
     const learnings = (Array.isArray(p.learnings) ? p.learnings : []) as { title?: string; body?: string; pinned?: boolean }[];
     const notes = [...learnings.filter((l) => l.pinned), ...learnings.filter((l) => !l.pinned)].slice(0, 12).map((l) => `- ${l.title}: ${l.body}`).join('\n');
@@ -306,9 +277,6 @@ export class AgentRuntime implements OnModuleInit, OnModuleDestroy {
       `Kepribadian Anda:\n${p.persona?.trim() || fallbackPersona({ name, role, skills: p.skills })}`,
       p.skills.length ? `Keahlian: ${p.skills.join(', ')}.` : '',
       notes ? `Catatan yang sudah Anda pelajari:\n${notes}` : '',
-      skills.length
-        ? `Skill (panduan kerja) yang Anda kuasai:\n${skillIndex(skills)}\nSebelum mengerjakan tugas teknis yang cocok dengan salah satunya, panggil load_skill dulu lalu ikuti alurnya (referensi tambahan lewat read_skill_reference, buka hanya yang perlu). Anda tidak punya akses repo atau terminal, jadi hasil kerja Anda berupa dokumen, spesifikasi, rancangan, review, atau komentar tiket; abaikan langkah panduan yang meminta menjalankan perintah.`
-        : '',
       `Hari ini ${new Date().toLocaleDateString('id-ID', { dateStyle: 'full', timeZone: 'Asia/Jakarta' })}.`,
       [
         'Aturan kerja:',
@@ -318,9 +286,6 @@ export class AgentRuntime implements OnModuleInit, OnModuleDestroy {
         '- Laporkan hasil kerja di tiket dengan comment_ticket (apa yang dikerjakan, hasilnya, langkah berikutnya). Pindahkan status hanya bila memang tepat; pindahkan ke selesai hanya bila pekerjaan tuntas.',
         '- Tindakan berisiko atau berdampak ke luar (kirim email/pesan ke klien, publikasi, hapus data, biaya) WAJIB lewat request_approval; jangan dilakukan langsung. Setelah mengajukan, berhenti dan tunggu keputusan.',
         '- Perencanaan: panggil get_planning dulu supaya tidak membuat epic/sprint ganda. Epic = kelompok pekerjaan besar di linimasa (start_week & weeks); sprint = periode kerja bertanggal; pasang tiket ke epic dengan parameter epic dan beri due (tenggat) bila jadwalnya jelas. Jangan mengarang tanggal: pakai tanggal dari brief/pengguna, atau usulkan jadwal wajar dan sebutkan asumsinya di komentar.',
-        '- Tiket bertipe dokumen: cek list_docs dulu. Kalau sudah ada dokumennya (mis. BRD/SRS kerangka kosong), ISI lewat update_doc, jangan membuat dokumen baru yang kembar. Tulis isi yang lengkap dan konkret dari bahan yang ada (deskripsi tiket, lampiran lewat read_file, dokumen lain); bila ada asumsi atau bahan yang belum ada, tandai jelas di dokumen dan tanyakan lewat comment_ticket. Setelah terisi, ajukan submit_doc_review lalu laporkan ringkasannya di tiket.',
-        '- Brief/SRS yang dilampirkan tiket dibaca dengan read_file (id dari get_ticket). Pekerjaan memecah SRS menjadi epic/sprint/tiket: panggil banyak create_* sekaligus dalam satu giliran untuk menghemat langkah.',
-        '- Selalu tutup dengan ringkasan akhir 1–3 kalimat tentang apa yang sudah Anda ubah atau hasilkan. Jangan berhenti tanpa ringkasan.',
         '- Satu tugas, selesaikan tuntas lalu berikan ringkasan akhir 1–3 kalimat. Tidak perlu memakai semua alat.',
         job.conversation_id ? '- Ini percakapan chat: jawaban akhir Anda dikirim sebagai balasan chat, jadi tulis seperti pesan chat biasa.' : '',
         NATURAL_STYLE,
@@ -336,12 +301,12 @@ export class AgentRuntime implements OnModuleInit, OnModuleDestroy {
       const rows = await this.prisma.chatMessage.findMany({
         where: { conversation_id: job.conversation_id, deleted_at: null }, orderBy: { id: 'desc' }, take: 20, include: { author: { select: { display_name: true, username: true } }, attachments: { select: { id: true, name: true, size: true } } },
       });
-      let budget = 150_000; // total karakter isi file yang disertakan
+      let budget = 60000; // total karakter isi file yang disertakan
       const lines: string[] = [];
       for (const m of rows.reverse()) {
         let line = `${m.author.display_name}: ${m.body.length > 8000 ? `${m.body.slice(0, 8000)}… [dipotong]` : m.body}`.trimEnd();
         for (const a of m.attachments) {
-          const t = budget > 0 ? await this.files.readText(a.id, Math.min(100_000, budget)).catch(() => null) : null;
+          const t = budget > 0 ? await this.files.readText(a.id, Math.min(30000, budget)).catch(() => null) : null;
           if (t) { budget -= t.text.length; line += `\n[Lampiran: ${t.name}${t.truncated ? ' (dipotong)' : ''}]\n${t.text}\n[Akhir lampiran]`; }
           else line += `\n[Lampiran: ${a.name} — isi file tidak bisa dibaca agent (hanya file teks/markdown/csv/json); minta pengirim menempel teksnya bila perlu]`;
         }
@@ -384,11 +349,6 @@ export class AgentRuntime implements OnModuleInit, OnModuleDestroy {
       case 'list_docs': return 'Melihat daftar dokumen';
       case 'get_doc': return `Membaca dokumen ${v('slug')}`;
       case 'create_doc': return `Membuat dokumen "${v('title')}"`;
-      case 'update_doc': return `Mengisi dokumen ${v('slug')}`;
-      case 'submit_doc_review': return `Mengajukan review dokumen ${v('slug')}`;
-      case 'read_file': return `Membaca lampiran #${v('id')}`;
-      case 'load_skill': return `Memuat skill ${v('name')}`;
-      case 'read_skill_reference': return `Membaca referensi ${v('name')}/${v('file')}`;
       case 'send_message': return `Mengirim pesan ke @${v('username')}`;
       case 'request_approval': return `Meminta persetujuan: ${v('title')}`;
       case 'save_learning': return `Mencatat pelajaran: ${v('title')}`;
@@ -418,7 +378,7 @@ export class AgentRuntime implements OnModuleInit, OnModuleDestroy {
     this.bus.publish({ type: 'change', data: { res: 'ticket', key: key.toUpperCase(), project, by: me.username }, to: { ticketKey: key.toUpperCase(), except: me.userId } });
   }
 
-  private async runTool(me: JwtPayload, agentId: number, name: string, input: Record<string, unknown>, touched: { commented: boolean }, skills: Skill[] = []): Promise<{ out: string; error?: boolean }> {
+  private async runTool(me: JwtPayload, agentId: number, name: string, input: Record<string, unknown>, touched: { commented: boolean }): Promise<{ out: string; error?: boolean }> {
     const s = (k: string) => (typeof input[k] === 'string' ? (input[k] as string) : undefined);
     try {
       switch (name) {
@@ -522,43 +482,6 @@ export class AgentRuntime implements OnModuleInit, OnModuleDestroy {
           this.bus.publish({ type: 'change', data: { res: 'doc', by: me.username }, to: { except: me.userId } });
           return { out: `Dokumen dibuat (${d.slug ?? d.id}).` };
         }
-        case 'update_doc': {
-          const cur = (await this.docs.get(me, s('slug')!)) as unknown as { project: string; status: string; sections: unknown };
-          await this.assertMember(agentId, cur.project);
-          if (cur.status === 'Disetujui') throw new Error('Dokumen sudah disetujui dan dikunci; buat versi baru dengan create_doc.');
-          const incoming = (Array.isArray(input.sections) ? input.sections : []) as { heading: string; body: string }[];
-          if (!incoming.length) throw new Error('sections kosong');
-          const merged = mergeSections(cur.sections, incoming);
-          await this.docs.update(me, s('slug')!, { ...(s('title') ? { title: s('title') } : {}), sections: merged } as never);
-          this.bus.publish({ type: 'change', data: { res: 'doc', slug: s('slug'), by: me.username }, to: { project: cur.project, except: me.userId } });
-          return { out: `Dokumen ${s('slug')} diperbarui (${incoming.length} bagian diisi, total ${merged.length} bagian).` };
-        }
-        case 'submit_doc_review': {
-          const cur = (await this.docs.get(me, s('slug')!)) as unknown as { project: string; status: string };
-          await this.assertMember(agentId, cur.project);
-          if (cur.status !== 'Draf') throw new Error(`Dokumen berstatus ${cur.status}; hanya Draf yang bisa diajukan review.`);
-          await this.docs.review(me, s('slug')!, { status: 'Direview' } as never);
-          this.bus.publish({ type: 'change', data: { res: 'doc', slug: s('slug'), by: me.username }, to: { project: cur.project, except: me.userId } });
-          return { out: 'Dokumen diajukan untuk direview.' };
-        }
-        case 'read_file': {
-          const id = Number(input.id);
-          const a = await this.prisma.attachment.findUnique({
-            where: { id },
-            select: { ticket: { select: { deleted_at: true, project: { select: { slug: true } } } }, chat_message: { select: { deleted_at: true, conversation: { select: { members: { where: { user_id: agentId }, select: { id: true } } } } } } },
-          });
-          if (!a) throw new Error('Lampiran tidak ditemukan');
-          if (a.ticket) { if (a.ticket.deleted_at) throw new Error('Lampiran tidak ditemukan'); await this.assertMember(agentId, a.ticket.project.slug); }
-          else if (a.chat_message) { if (a.chat_message.deleted_at || !a.chat_message.conversation.members.length) throw new Error('Anda tidak punya akses ke lampiran ini'); }
-          else throw new Error('Anda tidak punya akses ke lampiran ini');
-          const f = await this.files.readText(id, 100_000);
-          if (!f) throw new Error('File ini tidak bisa dibaca sebagai teks (hanya md, txt, csv, json, dsb.). Minta pengirim menempel teksnya.');
-          return { out: `[${f.name}${f.truncated ? ' — dipotong' : ''}]\n${f.text}` };
-        }
-        case 'load_skill':
-          return { out: cut(readSkill(s('name') ?? '', skills), 40_000) };
-        case 'read_skill_reference':
-          return { out: cut(readSkillReference(s('name') ?? '', s('file') ?? '', skills), 40_000) };
         case 'send_message': {
           const conv = (await this.chatService.direct(me, s('username')!)) as unknown as { id: string };
           await this.chatService.send(me, Number(conv.id), { text: s('text') ?? '' });
