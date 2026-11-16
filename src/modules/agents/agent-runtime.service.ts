@@ -315,13 +315,31 @@ export class AgentRuntime implements OnModuleInit, OnModuleDestroy {
       const transcript = lines.join('\n');
       return `Percakapan terakhir (paling bawah yang terbaru):\n\n${transcript}\n\nBalas pesan terakhir dari ${who} sebagai ${agentName}.`;
     }
-    const ticket = ticketJson ? `\n\nTiket (JSON):\n${ticketJson}` : '';
+    let ticket = ticketJson ? `\n\nTiket (JSON):\n${ticketJson}` : '';
+    if (job.ticket_key) ticket += await this.attachmentText(job.ticket_key);
     switch (job.kind) {
       case 'assign': return `${who} menugaskan tiket ${job.ticket_key} kepada Anda. Pahami tiketnya lalu kerjakan bagian yang bisa Anda kerjakan, laporkan di tiket.${ticket}`;
       case 'mention': return `${who} menyebut Anda di tiket ${job.ticket_key}: "${job.prompt}"\n\nTanggapi / kerjakan permintaannya.${ticket}`;
       case 'comment': return `${who} berkomentar di tiket ${job.ticket_key} yang Anda tangani: "${job.prompt}"\n\nBalas atau tindak lanjuti bila perlu; kalau tidak perlu tindakan, cukup jawab singkat.${ticket}`;
       default: return `${job.prompt}${ticket}`;
     }
+  }
+
+  /** Isi lampiran tiket yang berupa teks (md, txt, csv, json, …) agar agent bisa membacanya; lampiran lain hanya disebut namanya. */
+  private async attachmentText(ticketKey: string) {
+    const atts = await this.prisma.attachment.findMany({
+      where: { ticket: { key: ticketKey, deleted_at: null }, storage_key: { not: null } },
+      select: { id: true, name: true }, orderBy: { id: 'asc' }, take: 10,
+    });
+    if (!atts.length) return '';
+    let budget = 40000;
+    const parts: string[] = [];
+    for (const a of atts) {
+      const t = budget > 0 ? await this.files.readText(a.id, Math.min(30000, budget)).catch(() => null) : null;
+      if (t) { budget -= t.text.length; parts.push(`[Lampiran: ${t.name}${t.truncated ? ' (dipotong)' : ''}]\n${t.text}\n[Akhir lampiran]`); }
+      else parts.push(`[Lampiran: ${a.name} — isi file tidak bisa dibaca agent (hanya file teks/markdown/csv/json)]`);
+    }
+    return `\n\nLampiran tiket:\n${parts.join('\n\n')}`;
   }
 
   private async titleOf(job: Job) {
@@ -567,8 +585,10 @@ export class AgentRuntime implements OnModuleInit, OnModuleDestroy {
   }
 
   private async setIdle(agentId: number, done: boolean) {
-    await this.prisma.agentProfile.update({ where: { user_id: agentId }, data: { current_task: null, ...(done ? { tasks_done: { increment: 1 } } : {}) } });
-    await this.prisma.user.update({ where: { id: agentId }, data: { status: 'idle' } });
+    // Agent yang dijeda saat pekerjaan berjalan tetap dijeda setelah pekerjaan itu selesai.
+    const paused = (await this.prisma.agentProfile.findUnique({ where: { user_id: agentId }, select: { current_task: true } }))?.current_task === 'Dijeda';
+    await this.prisma.agentProfile.update({ where: { user_id: agentId }, data: { current_task: paused ? 'Dijeda' : null, ...(done ? { tasks_done: { increment: 1 } } : {}) } });
+    await this.prisma.user.update({ where: { id: agentId }, data: { status: paused ? 'dijeda' : 'idle' } });
     this.bus.publish({ type: 'change', data: { res: 'org' } });
   }
 

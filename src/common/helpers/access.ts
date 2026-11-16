@@ -6,9 +6,9 @@ export const isManager = (u: JwtPayload) => u.positionName === 'Owner' || u.posi
 
 export const can = (u: JwtPayload, permission: string) => u.permissions.includes(permission);
 
-/** Tamu hanya melihat proyek tempat ia menjadi anggota; posisi lain melihat semua proyek internal. */
+/** Owner & Admin melihat semua proyek; posisi lain (Anggota, Tamu, Agent) hanya proyek tempat ia menjadi anggota. */
 export const projectScope = (u: JwtPayload): Prisma.ProjectWhereInput =>
-  u.positionName === 'Tamu' ? { members: { some: { user_id: u.userId } } } : {};
+  isManager(u) ? {} : { members: { some: { user_id: u.userId } } };
 
 export const assertManagerOr = (u: JwtPayload, ok: boolean, message = 'Anda tidak punya akses untuk tindakan ini') => {
   if (!ok && !isManager(u)) throw new ForbiddenException(message);

@@ -1,6 +1,6 @@
 /** Nilai yang diizinkan untuk kolom bertipe teks (selaras dengan FE src/lib/types.ts). */
 export const MEMBER_KINDS = ['human', 'agent'] as const;
-export const MEMBER_STATUSES = ['online', 'fokus', 'offline', 'bekerja', 'menunggu', 'idle'] as const;
+export const MEMBER_STATUSES = ['online', 'fokus', 'offline', 'bekerja', 'menunggu', 'idle', 'dijeda'] as const;
 export const STATUS_CATEGORIES = ['todo', 'progress', 'review', 'done'] as const;
 export const PROJECT_TEMPLATES = ['software', 'kanban', 'kreatif', 'konten'] as const;
 export const PROJECT_STATUSES = ['Berjalan', 'Perencanaan', 'Ditahan', 'Selesai'] as const;

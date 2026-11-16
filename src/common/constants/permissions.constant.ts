@@ -102,13 +102,14 @@ export const DEFAULT_POSITION_PERMISSIONS: Record<Exclude<PositionName, 'Owner'>
     ...Object.values(P.SOCIAL),
     P.CONTENT.PUBLISH,
   ],
-  // Anggota hanya mengerjakan tiket yang ada dan mengubah data dirinya sendiri.
+  // Anggota bekerja di proyek yang diikutinya: membuat & memperbarui tiket, berkomentar.
   Anggota: [
     P.USER.VIEW,
     P.DIVISION.VIEW,
     P.AGENT.VIEW,
     P.PROJECT.VIEW,
     P.TICKET.VIEW,
+    P.TICKET.ADD,
     P.TICKET.UPDATE,
     P.TICKET.COMMENT,
     P.DOC.VIEW,
