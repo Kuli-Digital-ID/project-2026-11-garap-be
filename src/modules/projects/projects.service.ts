@@ -142,7 +142,13 @@ export class ProjectsService {
 
   async remove(user: JwtPayload, slug: string) {
     const p = await this.findAccessible(user, slug);
-    await this.prisma.project.update({ where: { id: p.id }, data: { deleted_at: new Date(), slug: `${p.slug}-dihapus-${p.id}`, key: `${p.key}~${p.id}` } });
+    // Kunci tiket (DOL-1) & slug dokumen bersifat unik global: bebaskan agar proyek baru dengan kunci/nama sama bisa dibuat ulang.
+    await this.prisma.$transaction([
+      this.prisma.project.update({ where: { id: p.id }, data: { deleted_at: new Date(), slug: `${p.slug}-dihapus-${p.id}`, key: `${p.key}~${p.id}` } }),
+      this.prisma.$executeRaw`UPDATE tickets SET key = key || ${'~' + p.id} WHERE project_id = ${p.id} AND key NOT LIKE '%~%'`,
+      this.prisma.$executeRaw`UPDATE docs SET slug = slug || ${'-dihapus-' + p.id} WHERE project_id = ${p.id} AND slug NOT LIKE '%-dihapus-%'`,
+      this.prisma.$executeRaw`UPDATE agent_jobs SET status = 'failed', error = 'Proyek dihapus' WHERE status IN ('queued','running') AND ticket_key LIKE ${p.key + '-%'}`,
+    ]);
     await this.audit.log(user.userId, 'menghapus proyek', p.name, 'proyek');
     return { deleted: true };
   }
