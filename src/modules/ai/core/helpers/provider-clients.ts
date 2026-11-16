@@ -227,6 +227,14 @@ export interface ToolTurn {
   cacheWrite: number;
 }
 
+/** Tandai pesan pertama (prompt + isi lampiran) sebagai cache: giliran berikutnya dalam satu tugas cukup membayar 5% dari harga input. */
+function cacheFirstMessage(messages: AgentMessage[]): AgentMessage[] {
+  const first = messages[0];
+  if (!first || typeof first.content !== 'string') return messages;
+  const block = { type: 'text', text: first.content, cache_control: { type: 'ephemeral' } } as unknown as ContentBlock;
+  return [{ role: first.role, content: [block] }, ...messages.slice(1)];
+}
+
 /** Satu giliran model Anthropic dengan alat. Pemanggil yang menjalankan alat lalu mengirim hasilnya kembali. */
 export async function chatWithTools(
   c: ProviderCredentials,
@@ -234,7 +242,7 @@ export async function chatWithTools(
   system: string,
   messages: AgentMessage[],
   tools: ToolSpec[],
-  maxTokens = 3000,
+  maxTokens = Number(process.env.AGENT_MAX_TOKENS) || 16000,
 ): Promise<ToolTurn> {
   if (c.provider === 'google') return chatWithToolsGoogle(c, model, system, messages, tools, maxTokens);
   if (c.provider !== 'anthropic') return chatWithToolsOpenAI(c, model, system, messages, tools, maxTokens);
@@ -251,7 +259,7 @@ export async function chatWithTools(
           max_tokens: maxTokens,
           system: [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }],
           tools: tools.map((t, i) => (i === tools.length - 1 ? { ...t, cache_control: { type: 'ephemeral' } } : t)),
-          messages,
+          messages: cacheFirstMessage(messages),
         },
         180_000,
       );

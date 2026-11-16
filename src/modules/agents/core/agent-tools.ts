@@ -6,6 +6,20 @@ const APPROVAL_KINDS_LIST = [...APPROVAL_KINDS];
 const str = (description: string) => ({ type: 'string', description });
 const obj = (properties: Record<string, unknown>, required: string[] = []) => ({ type: 'object', properties, required });
 
+/** Hanya diberikan ke agent yang punya skill. */
+export const SKILL_TOOL_SPECS: ToolSpec[] = [
+  {
+    name: 'load_skill',
+    description: 'Muat panduan kerja lengkap sebuah skill (alur, aturan, praktik terbaik). Panggil SEBELUM mengerjakan tugas yang cocok dengan skill di daftar Anda, lalu ikuti panduannya.',
+    input_schema: obj({ name: str('nama skill dari daftar, mis. "nestjs-expert"') }, ['name']),
+  },
+  {
+    name: 'read_skill_reference',
+    description: 'Buka satu file referensi milik skill (nama file tercantum di hasil load_skill). Buka hanya yang relevan dengan tugas.',
+    input_schema: obj({ name: str('nama skill'), file: str('nama file referensi, mis. "authentication.md"') }, ['name', 'file']),
+  },
+];
+
 export const TOOL_SPECS: ToolSpec[] = [
   {
     name: 'get_project',
@@ -86,6 +100,25 @@ export const TOOL_SPECS: ToolSpec[] = [
       kind: { type: 'string', enum: ['BRD', 'SRS', 'Arsitektur', 'Rencana', 'Notulen', 'Panduan'] },
       sections: { type: 'array', items: obj({ heading: str('judul bagian'), body: str('isi bagian') }, ['heading', 'body']) },
     }, ['project', 'title', 'kind', 'sections']),
+  },
+  {
+    name: 'update_doc',
+    description: 'Isi atau ubah bagian dokumen yang SUDAH ADA (mis. BRD/SRS kerangka dari list_docs). Bagian dengan judul sama diganti isinya; judul baru ditambahkan di akhir. Kirim semua bagian yang mau diisi dalam satu panggilan. Hanya untuk dokumen berstatus Draf. Isi bagian boleh berupa paragraf dan daftar bernomor/berbutir.',
+    input_schema: obj({
+      slug: str('slug dokumen dari list_docs'),
+      title: str('judul baru (opsional)'),
+      sections: { type: 'array', items: obj({ heading: str('judul bagian (sama dengan yang ada untuk mengganti isinya)'), body: str('isi bagian lengkap') }, ['heading', 'body']) },
+    }, ['slug', 'sections']),
+  },
+  {
+    name: 'submit_doc_review',
+    description: 'Ajukan dokumen yang sudah Anda isi untuk direview manusia (status Draf → Direview). Persetujuan akhir tetap oleh manusia.',
+    input_schema: obj({ slug: str('slug dokumen') }, ['slug']),
+  },
+  {
+    name: 'read_file',
+    description: 'Baca isi lampiran teks (md, txt, csv, json, dll.) milik tiket atau percakapan. id lampiran ada di get_ticket (attachments). File biner seperti PDF/Word tidak bisa dibaca.',
+    input_schema: obj({ id: { type: 'integer', description: 'id lampiran' } }, ['id']),
   },
   {
     name: 'send_message',
